@@ -14,19 +14,19 @@
 <body>
   <div class="app-shell">
     <header class="hero">
-      <p class="eyebrow">Camera + sensor + calibracao</p>
+      <p class="eyebrow">Camera + gesto + calibracao</p>
       <h1>Unlimited Void Trigger</h1>
       <p class="intro">
         Faça o sinal do Gojo com o indicador e o medio cruzados. O app calibra o seu gesto,
-        acompanha estabilidade, usa o sensor de movimento como gatilho extra e solta um
-        dominio mais cinematografico quando tudo encaixa.
+        acompanha estabilidade e solta um dominio mais cinematografico quando o gesto
+        fica firme o suficiente.
       </p>
       <div class="hero-actions">
-        <button id="startButton" class="start-button">Liberar camera e sensores</button>
+        <button id="startButton" class="start-button">Liberar camera</button>
         <button id="installButton" class="secondary-button" hidden>Instalar app</button>
       </div>
       <p id="permissionHint" class="hint">
-        Sensores, PWA e camera funcionam melhor em contexto seguro: `localhost` ou HTTPS.
+        PWA e camera funcionam melhor em contexto seguro: `localhost` ou HTTPS.
       </p>
     </header>
 
@@ -34,6 +34,7 @@
       <section class="viewer-card">
         <div id="stageFrame" class="stage-frame">
           <video id="camera" playsinline muted></video>
+          <canvas id="compositeCanvas"></canvas>
           <canvas id="overlay"></canvas>
           <div class="scanline-layer"></div>
 
@@ -60,6 +61,14 @@
           <button id="resetCalibrationButton" class="ghost-button" disabled>Limpar calibracao</button>
           <a id="downloadClip" class="ghost-link hidden" download="unlimited-void.webm">Baixar ultimo clip</a>
         </div>
+
+        <section class="gesture-guide-card">
+          <img
+            class="gesture-guide-image"
+            src="guides/gojo-gesture-guide.svg"
+            alt="Guia visual do gesto: indicador e medio cruzados, pontas proximas e dedos inferiores dobrados"
+          >
+        </section>
 
         <video id="clipPreview" class="clip-preview hidden" controls muted loop playsinline></video>
       </section>
@@ -115,7 +124,7 @@
             <div id="feedbackCross" class="feedback-item">Cruze mais os dois dedos</div>
             <div id="feedbackClose" class="feedback-item">Aproxime as pontas dos dedos</div>
             <div id="feedbackFold" class="feedback-item">Dobre anelar e mindinho para apoiar</div>
-            <div id="feedbackMotion" class="feedback-item">Faça um movimento curto para ativar</div>
+            <div id="feedbackMotion" class="feedback-item">Movimento agora e opcional</div>
           </div>
         </section>
 
@@ -129,11 +138,13 @@
     </main>
   </div>
 
-  <canvas id="compositeCanvas" hidden></canvas>
+  <canvas id="personCanvas" hidden></canvas>
+  <canvas id="segmentationCanvas" hidden></canvas>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 const STORAGE_KEY = "unlimited-void-calibration-v2";
-const EFFECT_DURATION_MS = 2600;
+const EFFECT_DURATION_MS = 4200;
 const CLIP_BEFORE_MS = 2000;
-const CLIP_AFTER_MS = 3000;
+const CLIP_AFTER_MS = 4200;
 const RECORDER_TIMESLICE_MS = 250;
 const CALIBRATION_SAMPLE_TARGET = 24;
 
@@ -16,6 +16,8 @@ const refs = {
   stageFrame: document.getElementById("stageFrame"),
   domainOverlay: document.getElementById("domainOverlay"),
   compositeCanvas: document.getElementById("compositeCanvas"),
+  personCanvas: document.getElementById("personCanvas"),
+  segmentationCanvas: document.getElementById("segmentationCanvas"),
   clipPreview: document.getElementById("clipPreview"),
   clipBadge: document.getElementById("clipBadge"),
   downloadClip: document.getElementById("downloadClip"),
@@ -61,6 +63,12 @@ const state = {
   effectCenter: { x: 0.5, y: 0.45 },
   effectParticles: [],
   animationFrameId: 0,
+  segmentation: {
+    model: null,
+    supported: typeof window.SelfieSegmentation !== "undefined",
+    ready: false,
+    lastUpdatedAt: 0,
+  },
   calibrationMode: false,
   calibrationSamples: [],
   calibrationProfile: loadCalibrationProfile(),
@@ -328,7 +336,6 @@ function scoreGesture(metrics) {
 function updateGuidance(metrics, result, gestureReady) {
   const extendScore = average([result.parts.index, result.parts.middle]);
   const foldScore = average([result.parts.ring, result.parts.pinky]);
-  const motionReady = state.motionGranted ? motionRecentlyDetected() : true;
 
   setFeedbackItem(
     refs.feedbackFrame,
@@ -367,12 +374,8 @@ function updateGuidance(metrics, result, gestureReady) {
   );
   setFeedbackItem(
     refs.feedbackMotion,
-    motionReady ? "good" : "warn",
-    motionReady
-      ? "Movimento pronto para disparo"
-      : state.motionGranted
-        ? "Faca um movimento curto para liberar o dominio"
-        : "Sem sensor liberado, camera-only liberado"
+    "good",
+    "Movimento nao e mais necessario para ativar"
   );
 
   if (state.calibrationMode) {
@@ -399,19 +402,13 @@ function updateGuidance(metrics, result, gestureReady) {
       setDebug("Dobre anelar e mindinho para dar apoio ao sinal.");
     } else if (state.stableFrames < 9) {
       setDebug("O gesto esta quase la. Segura firme por um instante.");
-    } else if (!motionReady) {
-      setDebug("Agora faz um movimento curto com a mao ou com o celular.");
     } else {
       setDebug("Quase pronto. Ajusta um pouco o cruzamento dos dedos.");
     }
     return;
   }
 
-  setDebug(
-    state.motionGranted
-      ? "Gesto estabilizado. Um movimento curto ativa o dominio."
-      : "Gesto estabilizado. Sem sensor liberado, a camera pode disparar sozinha."
-  );
+  setDebug("Gesto estabilizado. Segura firme mais um instante que o dominio ativa sozinho.");
 }
 
 function updateCalibrationState(metrics) {
@@ -472,6 +469,16 @@ function resizeCanvases() {
   if (refs.compositeCanvas.width !== width || refs.compositeCanvas.height !== height) {
     refs.compositeCanvas.width = width;
     refs.compositeCanvas.height = height;
+  }
+
+  if (refs.personCanvas.width !== width || refs.personCanvas.height !== height) {
+    refs.personCanvas.width = width;
+    refs.personCanvas.height = height;
+  }
+
+  if (refs.segmentationCanvas.width !== width || refs.segmentationCanvas.height !== height) {
+    refs.segmentationCanvas.width = width;
+    refs.segmentationCanvas.height = height;
   }
 
   return true;
@@ -549,8 +556,8 @@ function handleMotion(event) {
 
 async function requestMotionAccess() {
   if (!state.motionSupported) {
-    setPill(refs.motionStatus, "Nao suportado", "warn");
-    refs.pwaText.textContent = "Sem sensor de movimento nesse aparelho ou navegador.";
+    setPill(refs.motionStatus, "Nao usado", "idle");
+    refs.pwaText.textContent = "O sensor de movimento nao e mais necessario.";
     return;
   }
 
@@ -567,11 +574,10 @@ async function requestMotionAccess() {
 
     window.addEventListener("devicemotion", handleMotion, { passive: true });
     state.motionGranted = true;
-    setPill(refs.motionStatus, "Sensor ativo", "ok");
+    setPill(refs.motionStatus, "Opcional", "idle");
   } catch (error) {
     state.motionDenied = true;
-    setPill(refs.motionStatus, "Negado", "warn");
-    setDebug("Sem permissao para o sensor. O app cai para camera-only.");
+    setPill(refs.motionStatus, "Ignorado", "idle");
   }
 }
 
@@ -643,6 +649,27 @@ function updateRecordingText() {
   }
 
   refs.recordingText.textContent = "Clip recorder ativo. O ultimo dominio pode ser salvo.";
+}
+
+function drawMirroredSource(context, source, width, height) {
+  context.save();
+  context.translate(width, 0);
+  context.scale(-1, 1);
+  context.drawImage(source, 0, 0, width, height);
+  context.restore();
+}
+
+function effectProgressAt(timestamp) {
+  if (!state.effectStartAt) {
+    return null;
+  }
+
+  const elapsed = timestamp - state.effectStartAt;
+  if (elapsed < 0 || elapsed > EFFECT_DURATION_MS) {
+    return null;
+  }
+
+  return clamp(elapsed / EFFECT_DURATION_MS, 0, 1);
 }
 
 function queueClipCapture() {
@@ -834,11 +861,11 @@ function playDomainSound() {
 }
 
 function generateParticles() {
-  state.effectParticles = Array.from({ length: 36 }, (_, index) => ({
-    angle: (Math.PI * 2 * index) / 36,
-    radius: 0.14 + Math.random() * 0.28,
-    drift: 0.18 + Math.random() * 0.4,
-    size: 1 + Math.random() * 3.2,
+  state.effectParticles = Array.from({ length: 54 }, (_, index) => ({
+    angle: (Math.PI * 2 * index) / 54,
+    radius: 0.12 + Math.random() * 0.32,
+    drift: 0.22 + Math.random() * 0.46,
+    size: 1 + Math.random() * 3.8,
   }));
 }
 
@@ -886,6 +913,111 @@ function activateDomain() {
   }, EFFECT_DURATION_MS);
 }
 
+function drawAnimeDomainBackground(context, width, height, timestamp, progress) {
+  const centerX = width * 0.5;
+  const centerY = height * 0.46;
+  const sweep = timestamp * 0.001;
+  const bg = context.createLinearGradient(0, 0, 0, height);
+  bg.addColorStop(0, "#020611");
+  bg.addColorStop(0.42, "#09172a");
+  bg.addColorStop(1, "#040816");
+  context.fillStyle = bg;
+  context.fillRect(0, 0, width, height);
+
+  const halo = context.createRadialGradient(centerX, centerY, width * 0.05, centerX, centerY, width * 0.75);
+  halo.addColorStop(0, "rgba(235,249,255,0.98)");
+  halo.addColorStop(0.08, "rgba(173,236,255,0.92)");
+  halo.addColorStop(0.2, "rgba(77,171,214,0.58)");
+  halo.addColorStop(0.48, "rgba(8,29,52,0.32)");
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  context.fillStyle = halo;
+  context.fillRect(0, 0, width, height);
+
+  context.save();
+  context.strokeStyle = "rgba(171, 232, 255, 0.12)";
+  context.lineWidth = 1.25;
+  for (let column = -12; column <= 12; column += 1) {
+    const spread = column / 12;
+    const topX = centerX + spread * width * 0.16;
+    const bottomX = centerX + spread * width * 0.7;
+    context.beginPath();
+    context.moveTo(topX, height * 0.16);
+    context.lineTo(bottomX, height);
+    context.stroke();
+  }
+  for (let row = 0; row < 18; row += 1) {
+    const ratio = row / 17;
+    const y = height * (0.22 + ratio * 0.78);
+    const inset = width * (0.38 * (1 - ratio));
+    context.beginPath();
+    context.moveTo(inset, y);
+    context.lineTo(width - inset, y);
+    context.stroke();
+  }
+  context.restore();
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  for (let stripe = 0; stripe < 18; stripe += 1) {
+    const x = (stripe / 18) * width;
+    const wave = Math.sin(sweep * 1.3 + stripe * 0.7) * 18;
+    const stripeGradient = context.createLinearGradient(x, 0, x + wave, height);
+    stripeGradient.addColorStop(0, "rgba(0, 0, 0, 0)");
+    stripeGradient.addColorStop(0.3, "rgba(107, 210, 255, 0.05)");
+    stripeGradient.addColorStop(0.7, "rgba(255, 255, 255, 0.09)");
+    stripeGradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    context.fillStyle = stripeGradient;
+    context.fillRect(x - 6, 0, 18, height);
+  }
+
+  for (let index = 0; index < 86; index += 1) {
+    const seed = index * 17.31;
+    const x = ((seed * 37 + sweep * 28) % width + width) % width;
+    const y = ((seed * 53 + sweep * 12) % height + height) % height;
+    const alpha = 0.18 + (index % 5) * 0.08;
+    const size = 1 + (index % 3);
+    context.beginPath();
+    context.arc(x, y, size, 0, Math.PI * 2);
+    context.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    context.fill();
+  }
+  context.restore();
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  context.strokeStyle = `rgba(255,255,255,${0.24 + (1 - progress) * 0.2})`;
+  context.lineWidth = 2.5;
+  for (let ring = 0; ring < 5; ring += 1) {
+    const ringRadius = width * (0.07 + ring * 0.052 + progress * 0.045);
+    context.beginPath();
+    context.ellipse(centerX, centerY, ringRadius, ringRadius * 0.36, 0, 0, Math.PI * 2);
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawForegroundCutout(context, width, height, progress) {
+  if (!state.segmentation.ready) {
+    drawMirroredSource(context, refs.camera, width, height);
+    return;
+  }
+
+  const personContext = refs.personCanvas.getContext("2d");
+  personContext.save();
+  personContext.clearRect(0, 0, width, height);
+  drawMirroredSource(personContext, refs.camera, width, height);
+  personContext.globalCompositeOperation = "destination-in";
+  drawMirroredSource(personContext, refs.segmentationCanvas, width, height);
+  personContext.globalCompositeOperation = "source-over";
+  personContext.restore();
+
+  context.save();
+  context.shadowColor = `rgba(164, 242, 255, ${0.24 + (1 - progress) * 0.22})`;
+  context.shadowBlur = 22;
+  context.drawImage(refs.personCanvas, 0, 0, width, height);
+  context.restore();
+}
+
 function drawCompositeFrame(timestamp) {
   const width = refs.compositeCanvas.width;
   const height = refs.compositeCanvas.height;
@@ -897,70 +1029,30 @@ function drawCompositeFrame(timestamp) {
   const context = refs.compositeCanvas.getContext("2d");
   context.save();
   context.clearRect(0, 0, width, height);
-
-  context.translate(width, 0);
-  context.scale(-1, 1);
-  context.drawImage(refs.camera, 0, 0, width, height);
+  const progress = effectProgressAt(timestamp);
+  if (progress !== null) {
+    drawAnimeDomainBackground(context, width, height, timestamp, progress);
+    drawForegroundCutout(context, width, height, progress);
+  } else {
+    drawMirroredSource(context, refs.camera, width, height);
+  }
   context.restore();
 
-  const vignette = context.createRadialGradient(
-    width * 0.5,
-    height * 0.48,
-    width * 0.1,
-    width * 0.5,
-    height * 0.5,
-    width * 0.7
-  );
+  const vignette = context.createRadialGradient(width * 0.5, height * 0.48, width * 0.1, width * 0.5, height * 0.5, width * 0.7);
   vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
-  vignette.addColorStop(1, "rgba(3, 10, 18, 0.42)");
+  vignette.addColorStop(1, progress !== null ? "rgba(3, 10, 18, 0.3)" : "rgba(3, 10, 18, 0.42)");
   context.fillStyle = vignette;
   context.fillRect(0, 0, width, height);
 
-  if (state.lastLandmarks) {
-    drawConnectors(context, state.lastLandmarks, HAND_CONNECTIONS, {
-      color: state.lastGestureResult?.overall > 0.78 ? "#ffd880" : "#8fefff",
-      lineWidth: 4,
-    });
-    drawLandmarks(context, state.lastLandmarks, {
-      color: state.lastGestureResult?.overall > 0.78 ? "#ffffff" : "#12d7ff",
-      radius: 4,
-      lineWidth: 1.2,
-    });
-  }
-
   drawDomainCanvasEffect(context, width, height, timestamp);
-  drawHudText(context, width, height);
   state.animationFrameId = window.requestAnimationFrame(drawCompositeFrame);
 }
 
-function drawHudText(context, width, height) {
-  context.save();
-  context.font = "700 22px 'Segoe UI'";
-  context.fillStyle = "rgba(242, 247, 251, 0.84)";
-  context.fillText("UNLIMITED VOID TRIGGER", 28, 40);
-  context.font = "500 14px 'Segoe UI'";
-  context.fillStyle = "rgba(242, 247, 251, 0.68)";
-  context.fillText(
-    `Gesture ${Math.round((state.lastGestureResult?.overall || 0) * 100)}%  |  Stability ${Math.round(
-      clamp(state.stableFrames / 12, 0, 1) * 100
-    )}%`,
-    28,
-    64
-  );
-  context.restore();
-}
-
 function drawDomainCanvasEffect(context, width, height, timestamp) {
-  if (!state.effectStartAt) {
+  const progress = effectProgressAt(timestamp);
+  if (progress === null) {
     return;
   }
-
-  const elapsed = timestamp - state.effectStartAt;
-  if (elapsed < 0 || elapsed > EFFECT_DURATION_MS) {
-    return;
-  }
-
-  const progress = clamp(elapsed / EFFECT_DURATION_MS, 0, 1);
   const centerX = state.effectCenter.x * width;
   const centerY = state.effectCenter.y * height;
   const flashAlpha = clamp(1 - progress * 4.2, 0, 0.9);
@@ -1004,6 +1096,12 @@ function drawDomainCanvasEffect(context, width, height, timestamp) {
   context.lineWidth = 4;
   context.stroke();
 
+  context.beginPath();
+  context.arc(centerX, centerY, width * (0.06 + progress * 0.16), 0, Math.PI * 2);
+  context.strokeStyle = `rgba(255,255,255,${0.82 - progress * 0.62})`;
+  context.lineWidth = 2.5;
+  context.stroke();
+
   if (progress > 0.16) {
     context.font = `700 ${Math.max(30, width * 0.055)}px 'Segoe UI'`;
     context.textAlign = "center";
@@ -1025,11 +1123,45 @@ function startRenderLoop() {
   state.animationFrameId = window.requestAnimationFrame(drawCompositeFrame);
 }
 
+async function startSegmentation() {
+  if (!window.SelfieSegmentation) {
+    state.segmentation.supported = false;
+    refs.pwaText.textContent = "Segmentacao nao carregou. O fundo especial pode falhar.";
+    return;
+  }
+
+  state.segmentation.model = new SelfieSegmentation({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
+  });
+
+  state.segmentation.model.setOptions({
+    modelSelection: 1,
+  });
+
+  state.segmentation.model.onResults((results) => {
+    if (!results.segmentationMask || !resizeCanvases()) {
+      return;
+    }
+
+    const width = refs.segmentationCanvas.width;
+    const height = refs.segmentationCanvas.height;
+    const segmentationContext = refs.segmentationCanvas.getContext("2d");
+    segmentationContext.save();
+    segmentationContext.clearRect(0, 0, width, height);
+    segmentationContext.filter = "blur(4px)";
+    segmentationContext.drawImage(results.segmentationMask, 0, 0, width, height);
+    segmentationContext.restore();
+    state.segmentation.ready = true;
+    state.segmentation.lastUpdatedAt = Date.now();
+  });
+}
+
 async function startHandTracking() {
   if (!window.Hands || !window.Camera) {
     throw new Error("MediaPipe nao carregou. Confira a conexao com a internet.");
   }
 
+  await startSegmentation();
   state.hands = new Hands({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
@@ -1124,7 +1256,11 @@ async function startHandTracking() {
 
   state.cameraFeed = new Camera(refs.camera, {
     onFrame: async () => {
-      await state.hands.send({ image: refs.camera });
+      const tasks = [state.hands.send({ image: refs.camera })];
+      if (state.segmentation.model) {
+        tasks.push(state.segmentation.model.send({ image: refs.camera }));
+      }
+      await Promise.all(tasks);
     },
     width: 1280,
     height: 720,
@@ -1133,12 +1269,13 @@ async function startHandTracking() {
   await state.cameraFeed.start();
   state.cameraActive = true;
   resizeCanvases();
+  refs.stageFrame.classList.add("render-live");
   startRenderLoop();
   startCompositeRecorder();
   setPill(refs.cameraStatus, "Ativa", "ok");
   refs.calibrateButton.disabled = false;
   refs.resetCalibrationButton.disabled = !state.calibrationProfile;
-  setDebug("Camera online. Faz o gesto com indicador e medio cruzados para o detector aprender.");
+  setDebug("Camera online. Quando o dominio ativar, o fundo vai virar a cena atras de voce.");
   updateRecordingText();
 }
 
@@ -1223,12 +1360,11 @@ function resetCalibration() {
 async function startExperience() {
   refs.startButton.disabled = true;
   refs.startButton.textContent = "Inicializando...";
-  setDebug("Pedindo camera, carregando rastreio e ligando sensores.");
+  setDebug("Pedindo camera e carregando o rastreio da mao.");
 
   try {
-    await requestMotionAccess();
     await startHandTracking();
-    refs.startButton.textContent = "Sensores liberados";
+    refs.startButton.textContent = "Camera liberada";
   } catch (error) {
     refs.startButton.disabled = false;
     refs.startButton.textContent = "Tentar novamente";
@@ -1244,10 +1380,12 @@ function initUi() {
   registerProgressiveWebApp();
 
   if (!state.motionSupported) {
-    setPill(refs.motionStatus, "Nao suportado", "warn");
+    setPill(refs.motionStatus, "Nao usado", "idle");
   } else {
-    setPill(refs.motionStatus, "Aguardando", "idle");
+    setPill(refs.motionStatus, "Opcional", "idle");
   }
+
+  refs.pwaText.textContent = "O gesto sozinho ja ativa o dominio. Sensor agora e opcional.";
 
   if (!state.recorder.supported) {
     refs.recordingText.textContent = "Clip recorder indisponivel neste navegador.";

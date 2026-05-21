@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Guia do gesto do Unlimited Void</title>
+  <desc id="desc">Diagrama explicando que o indicador e o medio devem ficar cruzados, com pontas proximas, enquanto anelar e mindinho ficam dobrados.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#08131d"/>
+      <stop offset="100%" stop-color="#0d2b3f"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.08)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0.02)"/>
+    </linearGradient>
+    <linearGradient id="fingerA" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#dff8ff"/>
+      <stop offset="100%" stop-color="#9fe8ff"/>
+    </linearGradient>
+    <linearGradient id="fingerB" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#fff1bf"/>
+      <stop offset="100%" stop-color="#ffd982"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrow" markerWidth="14" markerHeight="14" refX="10" refY="7" orient="auto">
+      <path d="M0,0 L14,7 L0,14 Z" fill="#9fe8ff"/>
+    </marker>
+  </defs>
+
+  <rect width="960" height="540" rx="36" fill="url(#bg)"/>
+  <rect x="26" y="26" width="908" height="488" rx="30" fill="none" stroke="rgba(143,239,255,0.16)" stroke-width="2"/>
+
+  <g font-family="Segoe UI, sans-serif" fill="#f2f7fb">
+    <text x="58" y="78" font-size="28" font-weight="700">Guia rapido do gesto</text>
+    <text x="58" y="112" font-size="17" fill="#a7bfd0">Monte a mao assim antes de esperar o status ficar em "Pronto".</text>
+  </g>
+
+  <g transform="translate(44 146)">
+    <rect width="330" height="314" rx="28" fill="url(#panel)" stroke="rgba(255,255,255,0.06)"/>
+    <g font-family="Segoe UI, sans-serif" fill="#eff8ff">
+      <text x="28" y="48" font-size="20" font-weight="700">Checklist visual</text>
+      <text x="28" y="92" font-size="18">1. Estique indicador e medio</text>
+      <text x="28" y="136" font-size="18">2. Cruze os dois no centro</text>
+      <text x="28" y="180" font-size="18">3. Mantenha as pontas proximas</text>
+      <text x="28" y="224" font-size="18">4. Dobre anelar e mindinho</text>
+      <text x="28" y="280" font-size="16" fill="#8fefff">O dominio ativa melhor quando o gesto fica firme por um instante.</text>
+    </g>
+  </g>
+
+  <g transform="translate(420 88)">
+    <ellipse cx="266" cy="330" rx="180" ry="46" fill="rgba(0,0,0,0.28)"/>
+
+    <path d="M178 318
+             C152 268 150 232 164 196
+             C178 160 206 136 238 128
+             C280 116 328 134 360 176
+             C382 204 394 240 400 274
+             C404 298 400 330 386 350
+             C370 374 338 384 300 382
+             C246 380 208 364 178 318 Z"
+          fill="#e2f8ff" opacity="0.9"/>
+
+    <rect x="236" y="34" width="54" height="246" rx="27" transform="rotate(-22 263 157)" fill="url(#fingerA)" filter="url(#glow)"/>
+    <rect x="304" y="40" width="54" height="246" rx="27" transform="rotate(20 331 163)" fill="url(#fingerB)" filter="url(#glow)"/>
+
+    <rect x="256" y="224" width="48" height="124" rx="22" transform="rotate(16 280 286)" fill="#c7ecf8"/>
+    <rect x="314" y="222" width="46" height="112" rx="21" transform="rotate(30 337 278)" fill="#bae4f2"/>
+    <rect x="170" y="220" width="52" height="122" rx="23" transform="rotate(-38 196 281)" fill="#d7f3fd"/>
+
+    <circle cx="276" cy="74" r="14" fill="#ffffff"/>
+    <circle cx="333" cy="83" r="14" fill="#fff7da"/>
+
+    <path d="M214 88 C250 58 296 54 335 82" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M204 98 C244 64 301 62 344 94" fill="none" stroke="rgba(143,239,255,0.85)" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <path d="M380 140 C430 128 468 108 500 76" fill="none" stroke="#9fe8ff" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+    <path d="M374 238 C430 250 478 276 508 318" fill="none" stroke="#9fe8ff" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+    <path d="M196 248 C144 260 108 286 78 326" fill="none" stroke="#ffd982" stroke-width="4" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+    <g font-family="Segoe UI, sans-serif" font-size="18" font-weight="700">
+      <text x="508" y="74" fill="#9fe8ff">Pontas proximas</text>
+      <text x="514" y="320" fill="#9fe8ff">Cruze aqui</text>
+      <text x="22" y="332" fill="#ffd982">Dobre estes dedos</text>
+    </g>
+  </g>
+</svg>

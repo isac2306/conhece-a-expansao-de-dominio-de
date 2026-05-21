@@ -176,6 +176,7 @@ body::before {
 }
 
 #camera,
+#compositeCanvas,
 #overlay,
 .scanline-layer,
 .domain-overlay {
@@ -189,12 +190,31 @@ body::before {
   object-fit: cover;
   transform: scaleX(-1);
   filter: saturate(1.04) contrast(1.06) brightness(0.96);
+  transition: opacity 220ms ease;
 }
 
+#compositeCanvas {
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+#overlay {
+  transform: scaleX(-1);
+}
+
+#compositeCanvas,
 #overlay,
 .scanline-layer,
 .domain-overlay {
   pointer-events: none;
+}
+
+.stage-frame.render-live #camera {
+  opacity: 0;
+}
+
+.stage-frame.render-live #compositeCanvas {
+  opacity: 1;
 }
 
 .scanline-layer {
@@ -336,6 +356,22 @@ body::before {
 
 .viewer-tools {
   margin-top: 16px;
+}
+
+.gesture-guide-card {
+  margin-top: 18px;
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.gesture-guide-image {
+  width: 100%;
+  display: block;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.16);
 }
 
 .clip-preview {

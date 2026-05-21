@@ -6,6 +6,7 @@ const SAME_ORIGIN_ASSETS = [
   "./styles.css",
   "./app.js",
   "./manifest.json",
+  "./guides/gojo-gesture-guide.svg",
   "./icons/icon-any.svg",
   "./icons/icon-maskable.svg",
 ];
@@ -14,6 +15,7 @@ const CDN_ASSETS = [
   "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js",
   "https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js",
   "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js",
+  "https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js",
 ];
 
 self.addEventListener("install", (event) => {
