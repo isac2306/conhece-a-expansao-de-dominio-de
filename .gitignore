@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.log
+*.webm
+Thumbs.db
+.DS_Store

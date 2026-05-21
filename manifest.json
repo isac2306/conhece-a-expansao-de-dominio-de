@@ -1,0 +1,24 @@
+{
+  "name": "Unlimited Void Trigger",
+  "short_name": "UnlimitedVoid",
+  "description": "Camera, gesto calibrado e sensor de movimento para disparar uma versao cinematografica do Unlimited Void.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#061018",
+  "theme_color": "#061018",
+  "icons": [
+    {
+      "src": "icons/icon-any.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

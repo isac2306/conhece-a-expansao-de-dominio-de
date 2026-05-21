@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#061018">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Unlimited Void Trigger</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-any.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero">
+      <p class="eyebrow">Camera + sensor + calibracao</p>
+      <h1>Unlimited Void Trigger</h1>
+      <p class="intro">
+        Faça o sinal do Gojo com o indicador e o medio cruzados. O app calibra o seu gesto,
+        acompanha estabilidade, usa o sensor de movimento como gatilho extra e solta um
+        dominio mais cinematografico quando tudo encaixa.
+      </p>
+      <div class="hero-actions">
+        <button id="startButton" class="start-button">Liberar camera e sensores</button>
+        <button id="installButton" class="secondary-button" hidden>Instalar app</button>
+      </div>
+      <p id="permissionHint" class="hint">
+        Sensores, PWA e camera funcionam melhor em contexto seguro: `localhost` ou HTTPS.
+      </p>
+    </header>
+
+    <main class="layout">
+      <section class="viewer-card">
+        <div id="stageFrame" class="stage-frame">
+          <video id="camera" playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="scanline-layer"></div>
+
+          <div id="domainOverlay" class="domain-overlay" aria-hidden="true">
+            <div class="domain-flash"></div>
+            <div class="domain-vortex"></div>
+            <div class="domain-stars"></div>
+            <div class="domain-grid"></div>
+            <div class="domain-runes">
+              <span>MU RYO</span>
+              <span>KU SHO</span>
+              <span>UNLIMITED VOID</span>
+            </div>
+            <div class="domain-copy">
+              <span>Domain Expansion</span>
+              <strong>Unlimited Void</strong>
+              <em id="clipBadge" class="clip-badge">REC</em>
+            </div>
+          </div>
+        </div>
+
+        <div class="viewer-tools">
+          <button id="calibrateButton" class="secondary-button" disabled>Calibrar gesto</button>
+          <button id="resetCalibrationButton" class="ghost-button" disabled>Limpar calibracao</button>
+          <a id="downloadClip" class="ghost-link hidden" download="unlimited-void.webm">Baixar ultimo clip</a>
+        </div>
+
+        <video id="clipPreview" class="clip-preview hidden" controls muted loop playsinline></video>
+      </section>
+
+      <aside class="status-card">
+        <h2>Leitura em tempo real</h2>
+
+        <div class="status-list">
+          <div class="status-row">
+            <span>Camera</span>
+            <strong id="cameraStatus" class="status-pill idle">Aguardando</strong>
+          </div>
+          <div class="status-row">
+            <span>Mao</span>
+            <strong id="handStatus" class="status-pill idle">Sem leitura</strong>
+          </div>
+          <div class="status-row">
+            <span>Gesto</span>
+            <strong id="gestureStatus" class="status-pill idle">Nao detectado</strong>
+          </div>
+          <div class="status-row">
+            <span>Movimento</span>
+            <strong id="motionStatus" class="status-pill idle">Sem sensor</strong>
+          </div>
+        </div>
+
+        <div class="meter-block">
+          <span>Confianca do gesto</span>
+          <div class="meter-track">
+            <div id="gestureMeter" class="meter-fill"></div>
+          </div>
+        </div>
+
+        <div class="meter-block">
+          <span>Estabilidade</span>
+          <div class="meter-track">
+            <div id="stabilityMeter" class="meter-fill accent"></div>
+          </div>
+        </div>
+
+        <div class="meter-block">
+          <span>Intensidade do movimento</span>
+          <div class="meter-track">
+            <div id="motionMeter" class="meter-fill warn"></div>
+          </div>
+        </div>
+
+        <section class="feedback-panel">
+          <h3>Checklist do gesto</h3>
+          <div class="feedback-list">
+            <div id="feedbackFrame" class="feedback-item">Coloque a mao inteira no quadro</div>
+            <div id="feedbackExtend" class="feedback-item">Estique indicador e medio</div>
+            <div id="feedbackCross" class="feedback-item">Cruze mais os dois dedos</div>
+            <div id="feedbackClose" class="feedback-item">Aproxime as pontas dos dedos</div>
+            <div id="feedbackFold" class="feedback-item">Dobre anelar e mindinho para apoiar</div>
+            <div id="feedbackMotion" class="feedback-item">Faça um movimento curto para ativar</div>
+          </div>
+        </section>
+
+        <p id="debugText" class="debug-text">
+          Toque no botao acima para iniciar.
+        </p>
+        <p id="calibrationText" class="subtle-text">Sem calibracao personalizada ainda.</p>
+        <p id="pwaText" class="subtle-text">Modo web padrao.</p>
+        <p id="recordingText" class="subtle-text">Clip recorder aguardando.</p>
+      </aside>
+    </main>
+  </div>
+
+  <canvas id="compositeCanvas" hidden></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
