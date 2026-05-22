@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#061018">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Unlimited Void Trigger</title>
+  <title>Selo do Gojo | Unlimited Void</title>
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/icon-any.svg">
   <link rel="stylesheet" href="styles.css">
@@ -14,19 +14,19 @@
 <body>
   <div class="app-shell">
     <header class="hero">
-      <p class="eyebrow">Camera + gesto + calibracao</p>
-      <h1>Unlimited Void Trigger</h1>
+      <p class="eyebrow">Camera + mao + dominio</p>
+      <h1>Selo do Gojo</h1>
       <p class="intro">
-        Faça o sinal do Gojo com o indicador e o medio cruzados. O app calibra o seu gesto,
-        acompanha estabilidade e solta um dominio mais cinematografico quando o gesto
-        fica firme o suficiente.
+        Monte o sinal com indicador e medio cruzados. O app rastreia a sua mao,
+        calibra o seu jeito de fazer o gesto e troca o fundo atras de voce quando
+        o Unlimited Void abre.
       </p>
       <div class="hero-actions">
         <button id="startButton" class="start-button">Liberar camera</button>
         <button id="installButton" class="secondary-button" hidden>Instalar app</button>
       </div>
       <p id="permissionHint" class="hint">
-        PWA e camera funcionam melhor em contexto seguro: `localhost` ou HTTPS.
+        Camera e PWA funcionam melhor em contexto seguro: `localhost` ou HTTPS.
       </p>
     </header>
 
@@ -36,6 +36,14 @@
           <video id="camera" playsinline muted></video>
           <canvas id="compositeCanvas"></canvas>
           <canvas id="overlay"></canvas>
+          <div id="stageGuide" class="stage-guide">
+            <img
+              class="stage-guide-image"
+              src="guides/gojo-stage-ghost.svg"
+              alt="Guia fantasma do gesto sobre a camera"
+            >
+            <div id="stageGuideLabel" class="stage-guide-label">Encaixe sua mao aqui</div>
+          </div>
           <div class="scanline-layer"></div>
 
           <div id="domainOverlay" class="domain-overlay" aria-hidden="true">
@@ -43,6 +51,9 @@
             <div class="domain-vortex"></div>
             <div class="domain-stars"></div>
             <div class="domain-grid"></div>
+            <div class="domain-rays"></div>
+            <div class="domain-shockwave"></div>
+            <div class="domain-sigil"></div>
             <div class="domain-runes">
               <span>MU RYO</span>
               <span>KU SHO</span>
@@ -58,6 +69,7 @@
 
         <div class="viewer-tools">
           <button id="calibrateButton" class="secondary-button" disabled>Calibrar gesto</button>
+          <button id="trainButton" class="secondary-button" disabled>Treino guiado</button>
           <button id="resetCalibrationButton" class="ghost-button" disabled>Limpar calibracao</button>
           <a id="downloadClip" class="ghost-link hidden" download="unlimited-void.webm">Baixar ultimo clip</a>
         </div>
@@ -74,7 +86,7 @@
       </section>
 
       <aside class="status-card">
-        <h2>Leitura em tempo real</h2>
+        <h2>Leitura ao vivo</h2>
 
         <div class="status-list">
           <div class="status-row">
@@ -90,8 +102,8 @@
             <strong id="gestureStatus" class="status-pill idle">Nao detectado</strong>
           </div>
           <div class="status-row">
-            <span>Movimento</span>
-            <strong id="motionStatus" class="status-pill idle">Sem sensor</strong>
+            <span>Quadro</span>
+            <strong id="motionStatus" class="status-pill idle">Aguardando</strong>
           </div>
         </div>
 
@@ -103,37 +115,71 @@
         </div>
 
         <div class="meter-block">
-          <span>Estabilidade</span>
+          <span>Estabilidade do selo</span>
           <div class="meter-track">
             <div id="stabilityMeter" class="meter-fill accent"></div>
           </div>
         </div>
 
         <div class="meter-block">
-          <span>Intensidade do movimento</span>
+          <span>Presenca no quadro</span>
           <div class="meter-track">
             <div id="motionMeter" class="meter-fill warn"></div>
           </div>
         </div>
 
+        <section class="tuning-panel">
+          <h3>Ajuste fino</h3>
+
+          <label class="tuning-row" for="sensitivityRange">
+            <span>Sensibilidade</span>
+            <strong id="sensitivityValue">Media</strong>
+          </label>
+          <input
+            id="sensitivityRange"
+            class="tuning-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="48"
+          >
+
+          <label class="tuning-row" for="holdRange">
+            <span>Tempo do selo</span>
+            <strong id="holdValue">Medio</strong>
+          </label>
+          <input
+            id="holdRange"
+            class="tuning-slider"
+            type="range"
+            min="0"
+            max="100"
+            value="42"
+          >
+
+          <p id="tuningText" class="subtle-text">
+            Ajuste o detector para o seu jeito de fazer o gesto.
+          </p>
+        </section>
+
         <section class="feedback-panel">
-          <h3>Checklist do gesto</h3>
+          <h3>Checklist do selo</h3>
           <div class="feedback-list">
             <div id="feedbackFrame" class="feedback-item">Coloque a mao inteira no quadro</div>
             <div id="feedbackExtend" class="feedback-item">Estique indicador e medio</div>
             <div id="feedbackCross" class="feedback-item">Cruze mais os dois dedos</div>
             <div id="feedbackClose" class="feedback-item">Aproxime as pontas dos dedos</div>
             <div id="feedbackFold" class="feedback-item">Dobre anelar e mindinho para apoiar</div>
-            <div id="feedbackMotion" class="feedback-item">Movimento agora e opcional</div>
+            <div id="feedbackMotion" class="feedback-item">Segure o gesto firme para ativar</div>
           </div>
         </section>
 
         <p id="debugText" class="debug-text">
-          Toque no botao acima para iniciar.
+          Toque em liberar camera para comecar.
         </p>
         <p id="calibrationText" class="subtle-text">Sem calibracao personalizada ainda.</p>
-        <p id="pwaText" class="subtle-text">Modo web padrao.</p>
-        <p id="recordingText" class="subtle-text">Clip recorder aguardando.</p>
+        <p id="pwaText" class="subtle-text">Versao web principal.</p>
+        <p id="recordingText" class="subtle-text">Gravador aguardando.</p>
       </aside>
     </main>
   </div>

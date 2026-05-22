@@ -1,149 +1,183 @@
-const STORAGE_KEY = "unlimited-void-calibration-v2";
-const EFFECT_DURATION_MS = 4200;
-const CLIP_BEFORE_MS = 2000;
-const CLIP_AFTER_MS = 4200;
-const RECORDER_TIMESLICE_MS = 250;
-const CALIBRATION_SAMPLE_TARGET = 24;
+﻿const CHAVE_ARMAZENAMENTO = "unlimited-void-calibration-v2";
+const DURACAO_EFEITO_MS = 4200;
+const CHAVE_AJUSTES = "unlimited-void-settings-v1";
+const CLIPE_ANTES_MS = 2000;
+const CLIPE_DEPOIS_MS = 4200;
+const INTERVALO_GRAVADOR_MS = 250;
+const META_AMOSTRAS_CALIBRACAO = 24;
+const JANELA_SUAVIZACAO_GESTO = 10;
 
-const refs = {
-  startButton: document.getElementById("startButton"),
-  installButton: document.getElementById("installButton"),
-  calibrateButton: document.getElementById("calibrateButton"),
-  resetCalibrationButton: document.getElementById("resetCalibrationButton"),
-  permissionHint: document.getElementById("permissionHint"),
+const referencias = {
+  botaoIniciar: document.getElementById("startButton"),
+  botaoInstalar: document.getElementById("installButton"),
+  botaoCalibrar: document.getElementById("calibrateButton"),
+  botaoTreino: document.getElementById("trainButton"),
+  botaoResetarCalibracao: document.getElementById("resetCalibrationButton"),
+  dicaPermissao: document.getElementById("permissionHint"),
   camera: document.getElementById("camera"),
   overlay: document.getElementById("overlay"),
-  stageFrame: document.getElementById("stageFrame"),
-  domainOverlay: document.getElementById("domainOverlay"),
-  compositeCanvas: document.getElementById("compositeCanvas"),
-  personCanvas: document.getElementById("personCanvas"),
-  segmentationCanvas: document.getElementById("segmentationCanvas"),
-  clipPreview: document.getElementById("clipPreview"),
-  clipBadge: document.getElementById("clipBadge"),
-  downloadClip: document.getElementById("downloadClip"),
-  cameraStatus: document.getElementById("cameraStatus"),
-  handStatus: document.getElementById("handStatus"),
-  gestureStatus: document.getElementById("gestureStatus"),
-  motionStatus: document.getElementById("motionStatus"),
-  gestureMeter: document.getElementById("gestureMeter"),
-  stabilityMeter: document.getElementById("stabilityMeter"),
-  motionMeter: document.getElementById("motionMeter"),
-  debugText: document.getElementById("debugText"),
-  calibrationText: document.getElementById("calibrationText"),
-  pwaText: document.getElementById("pwaText"),
-  recordingText: document.getElementById("recordingText"),
-  feedbackFrame: document.getElementById("feedbackFrame"),
-  feedbackExtend: document.getElementById("feedbackExtend"),
-  feedbackCross: document.getElementById("feedbackCross"),
-  feedbackClose: document.getElementById("feedbackClose"),
-  feedbackFold: document.getElementById("feedbackFold"),
-  feedbackMotion: document.getElementById("feedbackMotion"),
+  quadroPalco: document.getElementById("stageFrame"),
+  guiaPalco: document.getElementById("stageGuide"),
+  rotuloGuiaPalco: document.getElementById("stageGuideLabel"),
+  sobreposicaoDominio: document.getElementById("domainOverlay"),
+  telaComposta: document.getElementById("compositeCanvas"),
+  telaPessoa: document.getElementById("personCanvas"),
+  telaSegmentacao: document.getElementById("segmentationCanvas"),
+  previaClipe: document.getElementById("clipPreview"),
+  seloClipe: document.getElementById("clipBadge"),
+  baixarClipe: document.getElementById("downloadClip"),
+  statusCamera: document.getElementById("cameraStatus"),
+  statusMao: document.getElementById("handStatus"),
+  statusGesto: document.getElementById("gestureStatus"),
+  statusMovimento: document.getElementById("motionStatus"),
+  medidorGesto: document.getElementById("gestureMeter"),
+  medidorEstabilidade: document.getElementById("stabilityMeter"),
+  medidorMovimento: document.getElementById("motionMeter"),
+  textoDebug: document.getElementById("debugText"),
+  textoCalibracao: document.getElementById("calibrationText"),
+  textoPwa: document.getElementById("pwaText"),
+  textoGravacao: document.getElementById("recordingText"),
+  textoAjustes: document.getElementById("tuningText"),
+  retornoEnquadramento: document.getElementById("feedbackFrame"),
+  retornoEsticar: document.getElementById("feedbackExtend"),
+  retornoCruzar: document.getElementById("feedbackCross"),
+  retornoAproximar: document.getElementById("feedbackClose"),
+  retornoDobrar: document.getElementById("feedbackFold"),
+  retornoMovimento: document.getElementById("feedbackMotion"),
+  controleSensibilidade: document.getElementById("sensitivityRange"),
+  controleSustentacao: document.getElementById("holdRange"),
+  valorSensibilidade: document.getElementById("sensitivityValue"),
+  valorSustentacao: document.getElementById("holdValue"),
 };
 
-const state = {
-  cameraActive: false,
-  motionSupported: "DeviceMotionEvent" in window,
-  motionGranted: false,
-  motionDenied: false,
-  motionLevel: 0,
-  lastMotionAt: 0,
-  lastLandmarks: null,
+const estado = {
+  cameraAtiva: false,
+  ultimosPontos: null,
   hands: null,
-  cameraFeed: null,
+  fluxoCamera: null,
   audioContext: null,
-  lastFrameAt: 0,
-  lastMetrics: null,
-  lastGestureResult: null,
-  scoreHistory: [],
-  stableFrames: 0,
-  gestureActive: false,
-  needsGestureReset: false,
-  domainCooldownUntil: 0,
-  effectStartAt: 0,
-  effectCenter: { x: 0.5, y: 0.45 },
-  effectParticles: [],
-  animationFrameId: 0,
-  segmentation: {
-    model: null,
-    supported: typeof window.SelfieSegmentation !== "undefined",
-    ready: false,
-    lastUpdatedAt: 0,
+  ultimoQuadroEm: 0,
+  ultimasMetricas: null,
+  ultimoResultadoGesto: null,
+  historicoPontuacao: [],
+  pontuacaoSuavizadaGesto: 0,
+  quadrosEstaveis: 0,
+  precisaRearmarGesto: false,
+  resfriamentoDominioAte: 0,
+  efeitoIniciadoEm: 0,
+  centroEfeito: { x: 0.5, y: 0.45 },
+  particulasEfeito: [],
+  idQuadroAnimacao: 0,
+  segmentacao: {
+    modelo: null,
+    suportado: typeof window.SelfieSegmentation !== "undefined",
+    pronta: false,
+    ultimaAtualizacaoEm: 0,
   },
-  calibrationMode: false,
-  calibrationSamples: [],
-  calibrationProfile: loadCalibrationProfile(),
-  installPrompt: null,
+  modoCalibracao: false,
+  modoTreinoGuiado: false,
+  etapaTreino: 0,
+  amostrasCalibracao: [],
+  perfilCalibracao: carregarPerfilCalibracao(),
+  ajustes: carregarAjustes(),
+  promptInstalacao: null,
   recorder: {
-    supported: typeof MediaRecorder !== "undefined",
-    mediaRecorder: null,
-    mimeType: "",
-    chunkStore: [],
+    suportado: typeof MediaRecorder !== "undefined",
+    gravadorMidia: null,
+    tipoMime: "",
+    armazenamentoBlocos: [],
     finalizing: false,
-    clipUrl: "",
-    captureRequestedAt: 0,
-    captureFinalizeAt: 0,
+    urlClipe: "",
+    capturaSolicitadaEm: 0,
+    capturaFinalizaEm: 0,
   },
 };
 
-function loadCalibrationProfile() {
+function carregarPerfilCalibracao() {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(CHAVE_ARMAZENAMENTO);
     return raw ? JSON.parse(raw) : null;
   } catch (error) {
     return null;
   }
 }
 
-function saveCalibrationProfile(profile) {
-  state.calibrationProfile = profile;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-  updateCalibrationText();
-  refs.resetCalibrationButton.disabled = false;
+function carregarAjustes() {
+  const padrao = {
+    sensibilidade: 48,
+    sustentacao: 42,
+  };
+
+  try {
+    const raw = window.localStorage.getItem(CHAVE_AJUSTES);
+    return raw ? { ...padrao, ...JSON.parse(raw) } : padrao;
+  } catch (error) {
+    return padrao;
+  }
 }
 
-function clearCalibrationProfile() {
-  window.localStorage.removeItem(STORAGE_KEY);
-  state.calibrationProfile = null;
-  updateCalibrationText();
-  refs.resetCalibrationButton.disabled = true;
+function salvarAjustes() {
+  window.localStorage.setItem(CHAVE_AJUSTES, JSON.stringify(estado.ajustes));
 }
 
-function updateCalibrationText() {
-  if (!state.calibrationProfile) {
-    refs.calibrationText.textContent = "Sem calibracao personalizada ainda.";
+function salvarPerfilCalibracao(profile) {
+  estado.perfilCalibracao = profile;
+  window.localStorage.setItem(CHAVE_ARMAZENAMENTO, JSON.stringify(profile));
+  atualizarTextoCalibracao();
+  referencias.botaoResetarCalibracao.disabled = false;
+}
+
+function limparPerfilCalibracao() {
+  window.localStorage.removeItem(CHAVE_ARMAZENAMENTO);
+  estado.perfilCalibracao = null;
+  atualizarTextoCalibracao();
+  referencias.botaoResetarCalibracao.disabled = true;
+}
+
+function atualizarTextoCalibracao() {
+  if (!estado.perfilCalibracao) {
+    referencias.textoCalibracao.textContent = "Sem calibracao personalizada ainda.";
     return;
   }
 
-  const timestamp = new Date(state.calibrationProfile.updatedAt);
+  const atualizadoEm =
+    estado.perfilCalibracao.atualizadoEm ??
+    estado.perfilCalibracao.updatedAt ??
+    Date.now();
+  const timestamp = new Date(atualizadoEm);
   const label = Number.isNaN(timestamp.getTime())
     ? "agora"
     : timestamp.toLocaleString("pt-BR");
-  refs.calibrationText.textContent = `Calibracao personalizada salva em ${label}.`;
+  referencias.textoCalibracao.textContent = `Calibracao personalizada salva em ${label}.`;
 }
 
-function setPill(element, text, tone) {
+function definirSelo(element, text, tone) {
   element.textContent = text;
   element.className = `status-pill ${tone}`;
 }
 
-function setDebug(message) {
-  refs.debugText.textContent = message;
+function definirDebug(message) {
+  referencias.textoDebug.textContent = message;
 }
 
-function setMeter(element, value) {
-  element.style.width = `${Math.round(clamp(value, 0, 1) * 100)}%`;
+function definirMedidor(element, value) {
+  element.style.width = `${Math.round(limitar(value, 0, 1) * 100)}%`;
 }
 
-function setFeedbackItem(element, tone, text) {
+function definirItemRetorno(element, tone, text) {
   element.className = `feedback-item ${tone}`;
   element.textContent = text;
 }
 
-function clamp(value, min, max) {
+function limitar(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function average(values) {
+function interpolar(min, max, progress) {
+  return min + (max - min) * progress;
+}
+
+function media(values) {
   if (!values.length) {
     return 0;
   }
@@ -151,33 +185,33 @@ function average(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function dist(a, b) {
+function distancia(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function vector(a, b) {
+function vetor(a, b) {
   return { x: b.x - a.x, y: b.y - a.y };
 }
 
-function magnitude(vector2d) {
-  return Math.hypot(vector2d.x, vector2d.y);
+function magnitude(vetor2d) {
+  return Math.hypot(vetor2d.x, vetor2d.y);
 }
 
-function angleBetween(a, b) {
+function anguloEntre(a, b) {
   const denominator = magnitude(a) * magnitude(b);
   if (!denominator) {
     return 0;
   }
 
-  const cosine = clamp((a.x * b.x + a.y * b.y) / denominator, -1, 1);
+  const cosine = limitar((a.x * b.x + a.y * b.y) / denominator, -1, 1);
   return Math.acos(cosine) * (180 / Math.PI);
 }
 
-function orientation(a, b, c) {
+function orientacao(a, b, c) {
   return (b.y - a.y) * (c.x - b.x) - (b.x - a.x) * (c.y - b.y);
 }
 
-function onSegment(a, b, c) {
+function pontoNoSegmento(a, b, c) {
   return (
     b.x <= Math.max(a.x, c.x) &&
     b.x >= Math.min(a.x, c.x) &&
@@ -186,46 +220,229 @@ function onSegment(a, b, c) {
   );
 }
 
-function segmentsIntersect(p1, q1, p2, q2) {
-  const o1 = orientation(p1, q1, p2);
-  const o2 = orientation(p1, q1, q2);
-  const o3 = orientation(p2, q2, p1);
-  const o4 = orientation(p2, q2, q1);
+function segmentosSeCruzam(p1, q1, p2, q2) {
+  const o1 = orientacao(p1, q1, p2);
+  const o2 = orientacao(p1, q1, q2);
+  const o3 = orientacao(p2, q2, p1);
+  const o4 = orientacao(p2, q2, q1);
   const epsilon = 1e-5;
 
   if ((o1 > 0) !== (o2 > 0) && (o3 > 0) !== (o4 > 0)) {
     return true;
   }
 
-  if (Math.abs(o1) < epsilon && onSegment(p1, p2, q1)) return true;
-  if (Math.abs(o2) < epsilon && onSegment(p1, q2, q1)) return true;
-  if (Math.abs(o3) < epsilon && onSegment(p2, p1, q2)) return true;
-  if (Math.abs(o4) < epsilon && onSegment(p2, q1, q2)) return true;
+  if (Math.abs(o1) < epsilon && pontoNoSegmento(p1, p2, q1)) return true;
+  if (Math.abs(o2) < epsilon && pontoNoSegmento(p1, q2, q1)) return true;
+  if (Math.abs(o3) < epsilon && pontoNoSegmento(p2, p1, q2)) return true;
+  if (Math.abs(o4) < epsilon && pontoNoSegmento(p2, q1, q2)) return true;
 
   return false;
 }
 
-function normalizeScore(value, min, max) {
+function normalizarPontuacao(value, min, max) {
   if (max <= min) {
     return 0;
   }
 
-  return clamp((value - min) / (max - min), 0, 1);
+  return limitar((value - min) / (max - min), 0, 1);
 }
 
-function invertScore(value, idealMax, tolerance) {
+function inverterPontuacao(value, idealMax, tolerance) {
   if (value <= idealMax) {
     return 1;
   }
 
-  return clamp(1 - (value - idealMax) / tolerance, 0, 1);
+  return limitar(1 - (value - idealMax) / tolerance, 0, 1);
 }
 
-function closenessScore(value, target, tolerance) {
-  return clamp(1 - Math.abs(value - target) / tolerance, 0, 1);
+function pontuacaoProximidade(value, target, tolerance) {
+  return limitar(1 - Math.abs(value - target) / tolerance, 0, 1);
 }
 
-function getDefaultProfile() {
+function progressoSensibilidade() {
+  return limitar(estado.ajustes.sensibilidade / 100, 0, 1);
+}
+
+function progressoSustentacao() {
+  return limitar(estado.ajustes.sustentacao / 100, 0, 1);
+}
+
+function obterLimiarGestoBruto() {
+  return interpolar(0.68, 0.82, progressoSensibilidade());
+}
+
+function obterLimiarGestoSuavizado() {
+  return interpolar(0.73, 0.87, progressoSensibilidade());
+}
+
+function obterLimiarRearmeGesto() {
+  return interpolar(0.26, 0.38, progressoSensibilidade());
+}
+
+function obterQuadrosNecessariosAtivacao() {
+  return Math.round(interpolar(7, 16, progressoSustentacao()));
+}
+
+function descreverSensibilidade(valor) {
+  if (valor < 34) {
+    return "Facil";
+  }
+
+  if (valor < 67) {
+    return "Media";
+  }
+
+  return "Precisa";
+}
+
+function descreverSustentacao(valor) {
+  if (valor < 34) {
+    return "Curta";
+  }
+
+  if (valor < 67) {
+    return "Media";
+  }
+
+  return "Longa";
+}
+
+function atualizarPainelAjustes() {
+  if (referencias.controleSensibilidade) {
+    referencias.controleSensibilidade.value = String(estado.ajustes.sensibilidade);
+  }
+
+  if (referencias.controleSustentacao) {
+    referencias.controleSustentacao.value = String(estado.ajustes.sustentacao);
+  }
+
+  referencias.valorSensibilidade.textContent = descreverSensibilidade(estado.ajustes.sensibilidade);
+  referencias.valorSustentacao.textContent = descreverSustentacao(estado.ajustes.sustentacao);
+  referencias.textoAjustes.textContent =
+    `Detector em ${descreverSensibilidade(estado.ajustes.sensibilidade).toLowerCase()} ` +
+    `com sustentacao ${descreverSustentacao(estado.ajustes.sustentacao).toLowerCase()}.`;
+}
+
+function obterEtapasTreino(result) {
+  return [
+    {
+      elemento: referencias.retornoEnquadramento,
+      guia: "Traga a mao para o centro do guia.",
+      objetivo: "Enquadre a mao inteira.",
+      concluida: result?.parts?.framing > 0.58,
+    },
+    {
+      elemento: referencias.retornoEsticar,
+      guia: "Agora estique indicador e medio.",
+      objetivo: "Estique os dois dedos principais.",
+      concluida: media([result?.parts?.index || 0, result?.parts?.middle || 0]) > 0.72,
+    },
+    {
+      elemento: referencias.retornoCruzar,
+      guia: "Cruze os dois dedos bem no centro.",
+      objetivo: "Cruze indicador e medio.",
+      concluida: result?.parts?.cross > 0.7,
+    },
+    {
+      elemento: referencias.retornoAproximar,
+      guia: "Aproxime as pontas sem desfazer o X.",
+      objetivo: "Deixe as pontas mais proximas.",
+      concluida: result?.parts?.close > 0.68,
+    },
+    {
+      elemento: referencias.retornoDobrar,
+      guia: "Dobre anelar e mindinho para apoiar.",
+      objetivo: "Feche os dedos inferiores.",
+      concluida: media([result?.parts?.ring || 0, result?.parts?.pinky || 0]) > 0.48,
+    },
+  ];
+}
+
+function aplicarFocoTreino(result) {
+  const etapas = obterEtapasTreino(result);
+  etapas.forEach((etapa, indice) => {
+    etapa.elemento.classList.toggle(
+      "focus",
+      estado.modoTreinoGuiado && indice === estado.etapaTreino && !etapa.concluida
+    );
+  });
+}
+
+function atualizarGuiaPalco(options = {}) {
+  const { rastreada = false, pronto = false, texto = "" } = options;
+  if (!referencias.guiaPalco) {
+    return;
+  }
+
+  referencias.guiaPalco.classList.toggle("tracked", rastreada);
+  referencias.guiaPalco.classList.toggle("ready", pronto);
+  referencias.guiaPalco.classList.toggle("hidden", false);
+
+  if (texto) {
+    referencias.rotuloGuiaPalco.textContent = texto;
+    return;
+  }
+
+  if (pronto) {
+    referencias.rotuloGuiaPalco.textContent = "Selo alinhado";
+  } else if (estado.modoTreinoGuiado) {
+    const etapa = obterEtapasTreino(estado.ultimoResultadoGesto)[estado.etapaTreino];
+    referencias.rotuloGuiaPalco.textContent = etapa?.guia || "Treino concluido";
+  } else if (rastreada) {
+    referencias.rotuloGuiaPalco.textContent = "Ajuste ate encaixar no selo";
+  } else {
+    referencias.rotuloGuiaPalco.textContent = "Encaixe sua mao aqui";
+  }
+}
+
+function concluirTreinoGuiado() {
+  estado.modoTreinoGuiado = false;
+  estado.etapaTreino = 0;
+  referencias.botaoTreino.textContent = "Treino guiado";
+  aplicarFocoTreino(estado.ultimoResultadoGesto);
+}
+
+function atualizarTreinoGuiado(result) {
+  if (!estado.modoTreinoGuiado) {
+    aplicarFocoTreino(result);
+    return;
+  }
+
+  const etapas = obterEtapasTreino(result);
+  const etapaAtual = etapas[estado.etapaTreino];
+
+  if (!etapaAtual) {
+    concluirTreinoGuiado();
+    definirDebug("Treino concluido. Agora repita o gesto inteiro para abrir o dominio.");
+    atualizarGuiaPalco({ rastreada: true, pronto: false, texto: "Treino concluido" });
+    return;
+  }
+
+  if (etapaAtual.concluida) {
+    estado.etapaTreino += 1;
+    const proxima = etapas[estado.etapaTreino];
+    if (!proxima) {
+      concluirTreinoGuiado();
+      definirDebug("Treino concluido. Agora repita o gesto inteiro para abrir o dominio.");
+      atualizarGuiaPalco({ rastreada: true, pronto: false, texto: "Treino concluido" });
+      return;
+    }
+
+    definirDebug(`Boa. ${proxima.objetivo}`);
+  } else {
+    definirDebug(`Treino guiado: ${etapaAtual.objetivo}`);
+  }
+
+  aplicarFocoTreino(result);
+  const etapaVisivel = etapas[Math.min(estado.etapaTreino, etapas.length - 1)];
+  atualizarGuiaPalco({
+    rastreada: true,
+    pronto: false,
+    texto: etapaVisivel?.guia || "Treino concluido",
+  });
+}
+
+function obterPerfilPadrao() {
   return {
     indexExtension: 0.3,
     middleExtension: 0.3,
@@ -236,11 +453,11 @@ function getDefaultProfile() {
   };
 }
 
-function getActiveProfile() {
-  return state.calibrationProfile || getDefaultProfile();
+function obterPerfilAtivo() {
+  return estado.perfilCalibracao || obterPerfilPadrao();
 }
 
-function computeGestureMetrics(landmarks) {
+function calcularMetricasGesto(landmarks) {
   const wrist = landmarks[0];
   const indexMcp = landmarks[5];
   const indexPip = landmarks[6];
@@ -253,22 +470,22 @@ function computeGestureMetrics(landmarks) {
   const pinkyMcp = landmarks[17];
   const pinkyPip = landmarks[18];
   const pinkyTip = landmarks[20];
-  const handScale = Math.max(dist(indexMcp, pinkyMcp), 0.001);
-  const indexVector = vector(indexPip, indexTip);
-  const middleVector = vector(middlePip, middleTip);
-  const tipGap = dist(indexTip, middleTip) / handScale;
-  const angle = angleBetween(indexVector, middleVector);
+  const handScale = Math.max(distancia(indexMcp, pinkyMcp), 0.001);
+  const indexVector = vetor(indexPip, indexTip);
+  const middleVector = vetor(middlePip, middleTip);
+  const tipGap = distancia(indexTip, middleTip) / handScale;
+  const angle = anguloEntre(indexVector, middleVector);
   const orderFlip = (indexTip.x - middleTip.x) * (indexMcp.x - middleMcp.x) < 0;
-  const crossing = segmentsIntersect(indexPip, indexTip, middlePip, middleTip);
+  const crossing = segmentosSeCruzam(indexPip, indexTip, middlePip, middleTip);
 
   return {
     handScale,
-    centerX: average([wrist.x, indexMcp.x, middleMcp.x, pinkyMcp.x]),
-    centerY: average([wrist.y, indexMcp.y, middleMcp.y, pinkyMcp.y]),
-    indexExtension: (dist(indexTip, wrist) - dist(indexPip, wrist)) / handScale,
-    middleExtension: (dist(middleTip, wrist) - dist(middlePip, wrist)) / handScale,
-    ringCurl: (dist(ringPip, wrist) - dist(ringTip, wrist)) / handScale,
-    pinkyCurl: (dist(pinkyPip, wrist) - dist(pinkyTip, wrist)) / handScale,
+    centerX: media([wrist.x, indexMcp.x, middleMcp.x, pinkyMcp.x]),
+    centerY: media([wrist.y, indexMcp.y, middleMcp.y, pinkyMcp.y]),
+    indexExtension: (distancia(indexTip, wrist) - distancia(indexPip, wrist)) / handScale,
+    middleExtension: (distancia(middleTip, wrist) - distancia(middlePip, wrist)) / handScale,
+    ringCurl: (distancia(ringPip, wrist) - distancia(ringTip, wrist)) / handScale,
+    pinkyCurl: (distancia(pinkyPip, wrist) - distancia(pinkyTip, wrist)) / handScale,
     tipGap,
     angle,
     crossing,
@@ -276,48 +493,50 @@ function computeGestureMetrics(landmarks) {
   };
 }
 
-function scoreGesture(metrics) {
-  const profile = getActiveProfile();
-  const indexScore = normalizeScore(
+function pontuarGesto(metrics) {
+  const profile = obterPerfilAtivo();
+  const indexScore = normalizarPontuacao(
     metrics.indexExtension,
     Math.max(0.14, profile.indexExtension * 0.68),
     Math.max(0.26, profile.indexExtension * 1.08)
   );
-  const middleScore = normalizeScore(
+  const middleScore = normalizarPontuacao(
     metrics.middleExtension,
     Math.max(0.14, profile.middleExtension * 0.68),
     Math.max(0.26, profile.middleExtension * 1.08)
   );
-  const closeScore = invertScore(
+  const closeScore = inverterPontuacao(
     metrics.tipGap,
     Math.max(0.3, profile.tipGap * 1.14),
     Math.max(0.2, profile.tipGap * 0.9)
   );
-  const crossByAngle = closenessScore(
+  const crossByAngle = pontuacaoProximidade(
     metrics.angle,
-    clamp(profile.angle, 12, 42),
+    limitar(profile.angle, 12, 42),
     Math.max(12, profile.angle * 0.8)
   );
   const crossScore = metrics.crossing ? 1 : metrics.orderFlip ? Math.max(0.72, crossByAngle) : crossByAngle * 0.3;
-  const ringScore = normalizeScore(
+  const ringScore = normalizarPontuacao(
     metrics.ringCurl,
     Math.min(-0.05, profile.ringCurl - 0.12),
     Math.max(0.02, profile.ringCurl + 0.08)
   );
-  const pinkyScore = normalizeScore(
+  const pinkyScore = normalizarPontuacao(
     metrics.pinkyCurl,
     Math.min(-0.05, profile.pinkyCurl - 0.12),
     Math.max(0.02, profile.pinkyCurl + 0.08)
   );
-  const framingScore = normalizeScore(metrics.handScale, 0.13, 0.28);
+  const framingScore = normalizarPontuacao(metrics.handScale, 0.13, 0.28);
+  const balanceScore = pontuacaoProximidade(metrics.indexExtension, metrics.middleExtension, 0.18);
   const overall =
-    indexScore * 0.19 +
-    middleScore * 0.19 +
-    closeScore * 0.2 +
+    indexScore * 0.17 +
+    middleScore * 0.17 +
+    closeScore * 0.19 +
     crossScore * 0.2 +
     ringScore * 0.08 +
     pinkyScore * 0.08 +
-    framingScore * 0.06;
+    framingScore * 0.05 +
+    balanceScore * 0.06;
 
   return {
     overall,
@@ -329,259 +548,246 @@ function scoreGesture(metrics) {
       cross: crossScore,
       ring: ringScore,
       pinky: pinkyScore,
+      balance: balanceScore,
     },
   };
 }
 
-function updateGuidance(metrics, result, gestureReady) {
-  const extendScore = average([result.parts.index, result.parts.middle]);
-  const foldScore = average([result.parts.ring, result.parts.pinky]);
+function atualizarOrientacoes(metrics, result, gestureReady) {
+  const extendScore = media([result.parts.index, result.parts.middle]);
+  const foldScore = media([result.parts.ring, result.parts.pinky]);
 
-  setFeedbackItem(
-    refs.feedbackFrame,
+  definirItemRetorno(
+    referencias.retornoEnquadramento,
     result.parts.framing > 0.72 ? "good" : "warn",
     result.parts.framing > 0.72
       ? "Mao enquadrada e com tamanho bom"
       : "Aproxime a mao e mantenha o pulso todo no quadro"
   );
-  setFeedbackItem(
-    refs.feedbackExtend,
+  definirItemRetorno(
+    referencias.retornoEsticar,
     extendScore > 0.75 ? "good" : "warn",
     extendScore > 0.75
       ? "Indicador e medio estao estendidos"
       : "Estique mais indicador e medio"
   );
-  setFeedbackItem(
-    refs.feedbackCross,
+  definirItemRetorno(
+    referencias.retornoCruzar,
     result.parts.cross > 0.74 ? "good" : "warn",
     result.parts.cross > 0.74
       ? "Cruzamento do gesto esta convincente"
       : "Cruze mais os dois dedos no centro"
   );
-  setFeedbackItem(
-    refs.feedbackClose,
+  definirItemRetorno(
+    referencias.retornoAproximar,
     result.parts.close > 0.72 ? "good" : "warn",
     result.parts.close > 0.72
       ? "Pontas proximas do suficiente"
       : "Aproxime mais as pontas do indicador e do medio"
   );
-  setFeedbackItem(
-    refs.feedbackFold,
+  definirItemRetorno(
+    referencias.retornoDobrar,
     foldScore > 0.55 ? "good" : "warn",
     foldScore > 0.55
       ? "Anelar e mindinho estao apoiando bem"
       : "Dobre um pouco mais anelar e mindinho"
   );
-  setFeedbackItem(
-    refs.feedbackMotion,
-    "good",
-    "Movimento nao e mais necessario para ativar"
+  definirItemRetorno(
+    referencias.retornoMovimento,
+    gestureReady ? "good" : "warn",
+    gestureReady
+      ? "Selo firme. O dominio pode abrir."
+      : "Segure o gesto firme por um instante para ativar."
   );
 
-  if (state.calibrationMode) {
-    const remaining = CALIBRATION_SAMPLE_TARGET - state.calibrationSamples.length;
-    setDebug(`Calibrando: segure o gesto firme. Faltam ${Math.max(remaining, 0)} amostras.`);
+  if (estado.modoCalibracao) {
+    const remaining = META_AMOSTRAS_CALIBRACAO - estado.amostrasCalibracao.length;
+    definirDebug(`Calibrando: segure o gesto firme. Faltam ${Math.max(remaining, 0)} amostras.`);
     return;
   }
 
-  if (state.needsGestureReset) {
-    setDebug("Solte o gesto e refaca para rearmar o dominio.");
+  if (estado.precisaRearmarGesto) {
+    definirDebug("Solte o gesto e refaca para rearmar o dominio.");
     return;
   }
 
   if (!gestureReady) {
     if (result.parts.framing < 0.55) {
-      setDebug("Aproxime a mao da camera e traga o pulso inteiro para o quadro.");
+      definirDebug("Aproxime a mao da camera e traga o pulso inteiro para o quadro.");
     } else if (extendScore < 0.62) {
-      setDebug("Estique mais indicador e medio antes de tentar cruzar.");
+      definirDebug("Estique mais indicador e medio antes de tentar cruzar.");
     } else if (result.parts.cross < 0.62) {
-      setDebug("Cruze mais indicador e medio no meio da mao.");
+      definirDebug("Cruze mais indicador e medio no meio da mao.");
     } else if (result.parts.close < 0.62) {
-      setDebug("As pontas dos dedos ainda estao longe. Aproxima um pouco mais.");
+      definirDebug("As pontas dos dedos ainda estao longe. Aproxima um pouco mais.");
     } else if (foldScore < 0.45) {
-      setDebug("Dobre anelar e mindinho para dar apoio ao sinal.");
-    } else if (state.stableFrames < 9) {
-      setDebug("O gesto esta quase la. Segura firme por um instante.");
+      definirDebug("Dobre anelar e mindinho para dar apoio ao sinal.");
+    } else if (estado.quadrosEstaveis < Math.max(4, Math.floor(obterQuadrosNecessariosAtivacao() * 0.75))) {
+      definirDebug("O gesto esta quase la. Segura firme por um instante.");
     } else {
-      setDebug("Quase pronto. Ajusta um pouco o cruzamento dos dedos.");
+      definirDebug("Quase pronto. Ajusta um pouco o cruzamento dos dedos.");
     }
     return;
   }
 
-  setDebug("Gesto estabilizado. Segura firme mais um instante que o dominio ativa sozinho.");
+  definirDebug("Gesto estabilizado. Segura firme mais um instante que o dominio ativa sozinho.");
 }
 
-function updateCalibrationState(metrics) {
-  if (!state.calibrationMode) {
+function atualizarEstadoCalibracao(metrics) {
+  if (!estado.modoCalibracao) {
     return;
   }
 
   if (metrics.handScale < 0.15) {
-    setDebug("Chega mais perto com a mao para a calibracao ficar precisa.");
+    definirDebug("Chega mais perto com a mao para a calibracao ficar precisa.");
     return;
   }
 
-  const calibrationScore = scoreGesture(metrics);
+  const calibrationScore = pontuarGesto(metrics);
   if (calibrationScore.overall < 0.48) {
-    setDebug("Mantenha o gesto mais proximo do sinal final antes de salvar a calibracao.");
+    definirDebug("Mantenha o gesto mais proximo do sinal final antes de salvar a calibracao.");
     return;
   }
 
-  state.calibrationSamples.push(metrics);
-  refs.calibrationText.textContent = `Calibrando gesto: ${state.calibrationSamples.length}/${CALIBRATION_SAMPLE_TARGET} amostras.`;
+  estado.amostrasCalibracao.push(metrics);
+  referencias.textoCalibracao.textContent = `Calibrando gesto: ${estado.amostrasCalibracao.length}/${META_AMOSTRAS_CALIBRACAO} amostras.`;
 
-  if (state.calibrationSamples.length < CALIBRATION_SAMPLE_TARGET) {
+  if (estado.amostrasCalibracao.length < META_AMOSTRAS_CALIBRACAO) {
     return;
   }
 
-  const profile = buildCalibrationProfile(state.calibrationSamples);
-  state.calibrationMode = false;
-  state.calibrationSamples = [];
-  refs.calibrateButton.textContent = "Recalibrar gesto";
-  saveCalibrationProfile(profile);
-  setDebug("Calibracao concluida. Agora o detector usa o seu gesto como referencia.");
+  const profile = montarPerfilCalibracao(estado.amostrasCalibracao);
+  estado.modoCalibracao = false;
+  estado.amostrasCalibracao = [];
+  referencias.botaoCalibrar.textContent = "Recalibrar gesto";
+  salvarPerfilCalibracao(profile);
+  definirDebug("Calibracao concluida. Agora o detector usa o seu gesto como referencia.");
 }
 
-function buildCalibrationProfile(samples) {
+function montarPerfilCalibracao(samples) {
   return {
-    indexExtension: average(samples.map((sample) => sample.indexExtension)),
-    middleExtension: average(samples.map((sample) => sample.middleExtension)),
-    tipGap: average(samples.map((sample) => sample.tipGap)),
-    angle: average(samples.map((sample) => sample.angle)),
-    ringCurl: average(samples.map((sample) => sample.ringCurl)),
-    pinkyCurl: average(samples.map((sample) => sample.pinkyCurl)),
-    updatedAt: Date.now(),
+    indexExtension: media(samples.map((sample) => sample.indexExtension)),
+    middleExtension: media(samples.map((sample) => sample.middleExtension)),
+    tipGap: media(samples.map((sample) => sample.tipGap)),
+    angle: media(samples.map((sample) => sample.angle)),
+    ringCurl: media(samples.map((sample) => sample.ringCurl)),
+    pinkyCurl: media(samples.map((sample) => sample.pinkyCurl)),
+    atualizadoEm: Date.now(),
   };
 }
 
-function resizeCanvases() {
-  const width = refs.camera.videoWidth;
-  const height = refs.camera.videoHeight;
+function redimensionarTelas() {
+  const width = referencias.camera.videoWidth;
+  const height = referencias.camera.videoHeight;
   if (!width || !height) {
     return false;
   }
 
-  if (refs.overlay.width !== width || refs.overlay.height !== height) {
-    refs.overlay.width = width;
-    refs.overlay.height = height;
+  if (referencias.overlay.width !== width || referencias.overlay.height !== height) {
+    referencias.overlay.width = width;
+    referencias.overlay.height = height;
   }
 
-  if (refs.compositeCanvas.width !== width || refs.compositeCanvas.height !== height) {
-    refs.compositeCanvas.width = width;
-    refs.compositeCanvas.height = height;
+  if (referencias.telaComposta.width !== width || referencias.telaComposta.height !== height) {
+    referencias.telaComposta.width = width;
+    referencias.telaComposta.height = height;
   }
 
-  if (refs.personCanvas.width !== width || refs.personCanvas.height !== height) {
-    refs.personCanvas.width = width;
-    refs.personCanvas.height = height;
+  if (referencias.telaPessoa.width !== width || referencias.telaPessoa.height !== height) {
+    referencias.telaPessoa.width = width;
+    referencias.telaPessoa.height = height;
   }
 
-  if (refs.segmentationCanvas.width !== width || refs.segmentationCanvas.height !== height) {
-    refs.segmentationCanvas.width = width;
-    refs.segmentationCanvas.height = height;
+  if (referencias.telaSegmentacao.width !== width || referencias.telaSegmentacao.height !== height) {
+    referencias.telaSegmentacao.width = width;
+    referencias.telaSegmentacao.height = height;
   }
 
   return true;
 }
 
-function drawHandOverlay(landmarks, gestureScore) {
-  if (!resizeCanvases()) {
+function desenharSobreposicaoMao(landmarks, gestureScore) {
+  if (!redimensionarTelas()) {
     return;
   }
 
-  const context = refs.overlay.getContext("2d");
+  const context = referencias.overlay.getContext("2d");
+  const limiarBruto = obterLimiarGestoBruto();
+  const pulse = 0.5 + Math.sin(performance.now() * 0.01) * 0.5;
+  const center = {
+    x: estado.ultimasMetricas.centerX * referencias.overlay.width,
+    y: estado.ultimasMetricas.centerY * referencias.overlay.height,
+  };
+  const pontaIndicador = {
+    x: landmarks[8].x * referencias.overlay.width,
+    y: landmarks[8].y * referencias.overlay.height,
+  };
+  const pontaMedio = {
+    x: landmarks[12].x * referencias.overlay.width,
+    y: landmarks[12].y * referencias.overlay.height,
+  };
+
   context.save();
-  context.clearRect(0, 0, refs.overlay.width, refs.overlay.height);
+  context.clearRect(0, 0, referencias.overlay.width, referencias.overlay.height);
+  context.strokeStyle = "rgba(143, 239, 255, 0.2)";
+  context.setLineDash([10, 12]);
+  context.lineWidth = 2;
+  context.beginPath();
+  context.ellipse(
+    referencias.overlay.width * 0.5,
+    referencias.overlay.height * 0.54,
+    referencias.overlay.width * 0.16,
+    referencias.overlay.height * 0.22,
+    0,
+    0,
+    Math.PI * 2
+  );
+  context.stroke();
+  context.setLineDash([]);
+
+  context.shadowColor = gestureScore > limiarBruto ? "rgba(255, 216, 128, 0.45)" : "rgba(18, 215, 255, 0.28)";
+  context.shadowBlur = gestureScore > limiarBruto ? 18 : 10;
 
   drawConnectors(context, landmarks, HAND_CONNECTIONS, {
-    color: gestureScore > 0.78 ? "#ffd880" : "#8fefff",
+    color: gestureScore > limiarBruto ? "#ffd880" : "#8fefff",
     lineWidth: 4,
   });
   drawLandmarks(context, landmarks, {
-    color: gestureScore > 0.78 ? "#ffffff" : "#12d7ff",
+    color: gestureScore > limiarBruto ? "#ffffff" : "#12d7ff",
     lineWidth: 1.4,
     radius: 5,
   });
 
-  const center = {
-    x: state.lastMetrics.centerX * refs.overlay.width,
-    y: state.lastMetrics.centerY * refs.overlay.height,
-  };
   context.beginPath();
-  context.arc(center.x, center.y, 46, 0, Math.PI * 2);
-  context.strokeStyle = gestureScore > 0.78 ? "rgba(255, 216, 128, 0.9)" : "rgba(143, 239, 255, 0.62)";
+  context.moveTo(pontaIndicador.x, pontaIndicador.y);
+  context.lineTo(pontaMedio.x, pontaMedio.y);
+  context.strokeStyle = gestureScore > limiarBruto ? "rgba(255, 245, 214, 0.92)" : "rgba(143, 239, 255, 0.7)";
+  context.lineWidth = 3;
+  context.stroke();
+
+  context.beginPath();
+  context.arc(center.x, center.y, 42 + pulse * 5, 0, Math.PI * 2);
+  context.strokeStyle = gestureScore > limiarBruto ? "rgba(255, 216, 128, 0.9)" : "rgba(143, 239, 255, 0.62)";
   context.lineWidth = 2;
+  context.stroke();
+
+  context.beginPath();
+  context.moveTo(center.x - 14, center.y);
+  context.lineTo(center.x + 14, center.y);
+  context.moveTo(center.x, center.y - 14);
+  context.lineTo(center.x, center.y + 14);
+  context.strokeStyle = "rgba(255, 255, 255, 0.5)";
+  context.lineWidth = 1.5;
   context.stroke();
   context.restore();
 }
 
-function clearHandOverlay() {
-  const context = refs.overlay.getContext("2d");
-  context.clearRect(0, 0, refs.overlay.width, refs.overlay.height);
+function limparSobreposicaoMao() {
+  const context = referencias.overlay.getContext("2d");
+  context.clearRect(0, 0, referencias.overlay.width, referencias.overlay.height);
 }
 
-function motionRecentlyDetected() {
-  return Date.now() - state.lastMotionAt < 900;
-}
-
-function handleMotion(event) {
-  const acceleration = event.accelerationIncludingGravity || event.acceleration;
-  const rotationRate = event.rotationRate;
-  const ax = acceleration?.x || 0;
-  const ay = acceleration?.y || 0;
-  const az = acceleration?.z || 0;
-  const rotationMagnitude = rotationRate
-    ? Math.hypot(rotationRate.alpha || 0, rotationRate.beta || 0, rotationRate.gamma || 0)
-    : 0;
-  const accelerationMagnitude = Math.hypot(ax, ay, az);
-  const accelerationLevel = clamp((accelerationMagnitude - 9) / 14, 0, 1);
-  const rotationLevel = clamp(rotationMagnitude / 280, 0, 1);
-  const combined = clamp(Math.max(accelerationLevel, rotationLevel * 0.9), 0, 1);
-
-  state.motionLevel = combined;
-  setMeter(refs.motionMeter, combined);
-
-  if (combined > 0.5) {
-    state.lastMotionAt = Date.now();
-  }
-
-  if (state.motionGranted) {
-    setPill(
-      refs.motionStatus,
-      motionRecentlyDetected() ? "Movimento lido" : "Parado",
-      motionRecentlyDetected() ? "ok" : "idle"
-    );
-  }
-}
-
-async function requestMotionAccess() {
-  if (!state.motionSupported) {
-    setPill(refs.motionStatus, "Nao usado", "idle");
-    refs.pwaText.textContent = "O sensor de movimento nao e mais necessario.";
-    return;
-  }
-
-  try {
-    if (
-      typeof DeviceMotionEvent !== "undefined" &&
-      typeof DeviceMotionEvent.requestPermission === "function"
-    ) {
-      const result = await DeviceMotionEvent.requestPermission();
-      if (result !== "granted") {
-        throw new Error("Permissao negada");
-      }
-    }
-
-    window.addEventListener("devicemotion", handleMotion, { passive: true });
-    state.motionGranted = true;
-    setPill(refs.motionStatus, "Opcional", "idle");
-  } catch (error) {
-    state.motionDenied = true;
-    setPill(refs.motionStatus, "Ignorado", "idle");
-  }
-}
-
-function pickRecorderMimeType() {
+function escolherTipoMimeGravador() {
   if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) {
     return "";
   }
@@ -595,63 +801,63 @@ function pickRecorderMimeType() {
   return mimeTypes.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || "";
 }
 
-function startCompositeRecorder() {
-  if (!state.recorder.supported || state.recorder.mediaRecorder || !refs.compositeCanvas.width) {
-    updateRecordingText();
+function iniciarGravadorComposto() {
+  if (!estado.recorder.suportado || estado.recorder.gravadorMidia || !referencias.telaComposta.width) {
+    atualizarTextoGravacao();
     return;
   }
 
-  const stream = refs.compositeCanvas.captureStream(24);
-  const mimeType = pickRecorderMimeType();
-  state.recorder.mimeType = mimeType;
+  const stream = referencias.telaComposta.captureStream(24);
+  const mimeType = escolherTipoMimeGravador();
+  estado.recorder.tipoMime = mimeType;
 
   try {
-    state.recorder.mediaRecorder = mimeType
+    estado.recorder.gravadorMidia = mimeType
       ? new MediaRecorder(stream, { mimeType })
       : new MediaRecorder(stream);
   } catch (error) {
-    refs.recordingText.textContent = "Recorder indisponivel neste navegador.";
+    referencias.textoGravacao.textContent = "Recorder indisponivel neste navegador.";
     return;
   }
 
-  state.recorder.mediaRecorder.addEventListener("dataavailable", (event) => {
+  estado.recorder.gravadorMidia.addEventListener("dataavailable", (event) => {
     if (!event.data || event.data.size === 0) {
       return;
     }
 
-    state.recorder.chunkStore.push({
+    estado.recorder.armazenamentoBlocos.push({
       blob: event.data,
       at: Date.now(),
     });
 
-    const cutoff = Date.now() - Math.max(CLIP_BEFORE_MS + CLIP_AFTER_MS + 1000, 7000);
-    state.recorder.chunkStore = state.recorder.chunkStore.filter((entry) => entry.at >= cutoff);
+    const cutoff = Date.now() - Math.max(CLIPE_ANTES_MS + CLIPE_DEPOIS_MS + 1000, 7000);
+    estado.recorder.armazenamentoBlocos = estado.recorder.armazenamentoBlocos.filter((entry) => entry.at >= cutoff);
   });
 
-  state.recorder.mediaRecorder.start(RECORDER_TIMESLICE_MS);
-  updateRecordingText();
+  estado.recorder.gravadorMidia.start(INTERVALO_GRAVADOR_MS);
+  atualizarTextoGravacao();
 }
 
-function updateRecordingText() {
-  if (!state.recorder.supported) {
-    refs.recordingText.textContent = "Clip recorder nao suportado neste navegador.";
+function atualizarTextoGravacao() {
+  if (!estado.recorder.suportado) {
+    referencias.textoGravacao.textContent = "Clip recorder nao suportado neste navegador.";
     return;
   }
 
-  if (!state.recorder.mediaRecorder) {
-    refs.recordingText.textContent = "Clip recorder aguardando camera.";
+  if (!estado.recorder.gravadorMidia) {
+    referencias.textoGravacao.textContent = "Clip recorder aguardando camera.";
     return;
   }
 
-  if (state.recorder.captureFinalizeAt > Date.now()) {
-    refs.recordingText.textContent = "Gravando janela do dominio: 2s antes + 3s depois.";
+  if (estado.recorder.capturaFinalizaEm > Date.now()) {
+    referencias.textoGravacao.textContent = "Gravando janela do dominio: 2s antes + 3s depois.";
     return;
   }
 
-  refs.recordingText.textContent = "Clip recorder ativo. O ultimo dominio pode ser salvo.";
+  referencias.textoGravacao.textContent = "Clip recorder ativo. O ultimo dominio pode ser salvo.";
 }
 
-function drawMirroredSource(context, source, width, height) {
+function desenharFonteEspelhada(context, source, width, height) {
   context.save();
   context.translate(width, 0);
   context.scale(-1, 1);
@@ -659,70 +865,70 @@ function drawMirroredSource(context, source, width, height) {
   context.restore();
 }
 
-function effectProgressAt(timestamp) {
-  if (!state.effectStartAt) {
+function progressoEfeitoEm(timestamp) {
+  if (!estado.efeitoIniciadoEm) {
     return null;
   }
 
-  const elapsed = timestamp - state.effectStartAt;
-  if (elapsed < 0 || elapsed > EFFECT_DURATION_MS) {
+  const elapsed = timestamp - estado.efeitoIniciadoEm;
+  if (elapsed < 0 || elapsed > DURACAO_EFEITO_MS) {
     return null;
   }
 
-  return clamp(elapsed / EFFECT_DURATION_MS, 0, 1);
+  return limitar(elapsed / DURACAO_EFEITO_MS, 0, 1);
 }
 
 function queueClipCapture() {
-  if (!state.recorder.mediaRecorder) {
+  if (!estado.recorder.gravadorMidia) {
     return;
   }
 
-  state.recorder.captureRequestedAt = Date.now();
-  state.recorder.captureFinalizeAt = Date.now() + CLIP_AFTER_MS + RECORDER_TIMESLICE_MS;
-  refs.clipBadge.classList.add("recording");
-  updateRecordingText();
+  estado.recorder.capturaSolicitadaEm = Date.now();
+  estado.recorder.capturaFinalizaEm = Date.now() + CLIPE_DEPOIS_MS + INTERVALO_GRAVADOR_MS;
+  referencias.seloClipe.classList.add("recording");
+  atualizarTextoGravacao();
 
-  window.setTimeout(finalizeClipCapture, CLIP_AFTER_MS + RECORDER_TIMESLICE_MS * 2);
+  window.setTimeout(finalizeClipCapture, CLIPE_DEPOIS_MS + INTERVALO_GRAVADOR_MS * 2);
 }
 
 function finalizeClipCapture() {
-  if (!state.recorder.mediaRecorder || state.recorder.finalizing) {
+  if (!estado.recorder.gravadorMidia || estado.recorder.finalizing) {
     return;
   }
 
-  state.recorder.finalizing = true;
-  refs.clipBadge.classList.remove("recording");
+  estado.recorder.finalizing = true;
+  referencias.seloClipe.classList.remove("recording");
 
-  const from = state.recorder.captureRequestedAt - CLIP_BEFORE_MS;
-  const to = state.recorder.captureFinalizeAt + RECORDER_TIMESLICE_MS;
-  const clipChunks = state.recorder.chunkStore
+  const from = estado.recorder.capturaSolicitadaEm - CLIPE_ANTES_MS;
+  const to = estado.recorder.capturaFinalizaEm + INTERVALO_GRAVADOR_MS;
+  const clipChunks = estado.recorder.armazenamentoBlocos
     .filter((entry) => entry.at >= from && entry.at <= to)
     .map((entry) => entry.blob);
 
   if (!clipChunks.length) {
-    state.recorder.finalizing = false;
-    updateRecordingText();
+    estado.recorder.finalizing = false;
+    atualizarTextoGravacao();
     return;
   }
 
-  if (state.recorder.clipUrl) {
-    URL.revokeObjectURL(state.recorder.clipUrl);
+  if (estado.recorder.urlClipe) {
+    URL.revokeObjectURL(estado.recorder.urlClipe);
   }
 
   const clipBlob = new Blob(clipChunks, {
-    type: state.recorder.mimeType || "video/webm",
+    type: estado.recorder.tipoMime || "video/webm",
   });
   const clipUrl = URL.createObjectURL(clipBlob);
 
-  state.recorder.clipUrl = clipUrl;
-  refs.clipPreview.src = clipUrl;
-  refs.clipPreview.classList.remove("hidden");
-  refs.downloadClip.href = clipUrl;
-  refs.downloadClip.classList.remove("hidden");
-  refs.downloadClip.download = `unlimited-void-${Date.now()}.webm`;
-  refs.recordingText.textContent = "Clip pronto. Voce pode assistir ou baixar.";
-  state.recorder.captureFinalizeAt = 0;
-  state.recorder.finalizing = false;
+  estado.recorder.urlClipe = clipUrl;
+  referencias.previaClipe.src = clipUrl;
+  referencias.previaClipe.classList.remove("hidden");
+  referencias.baixarClipe.href = clipUrl;
+  referencias.baixarClipe.classList.remove("hidden");
+  referencias.baixarClipe.download = `unlimited-void-${Date.now()}.webm`;
+  referencias.textoGravacao.textContent = "Clip pronto. Voce pode assistir ou baixar.";
+  estado.recorder.capturaFinalizaEm = 0;
+  estado.recorder.finalizing = false;
 }
 
 function createImpulseResponse(audioContext, durationSeconds, decay) {
@@ -753,16 +959,16 @@ function createNoiseBuffer(audioContext, durationSeconds) {
 }
 
 function getAudioContext() {
-  if (!state.audioContext) {
+  if (!estado.audioContext) {
     const AudioCtor = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtor) {
       return null;
     }
 
-    state.audioContext = new AudioCtor();
+    estado.audioContext = new AudioCtor();
   }
 
-  return state.audioContext;
+  return estado.audioContext;
 }
 
 function playDomainSound() {
@@ -860,60 +1066,61 @@ function playDomainSound() {
   strike.stop(now + 0.62);
 }
 
-function generateParticles() {
-  state.effectParticles = Array.from({ length: 54 }, (_, index) => ({
-    angle: (Math.PI * 2 * index) / 54,
-    radius: 0.12 + Math.random() * 0.32,
-    drift: 0.22 + Math.random() * 0.46,
-    size: 1 + Math.random() * 3.8,
+function gerarParticulas() {
+  estado.particulasEfeito = Array.from({ length: 84 }, (_, index) => ({
+    angle: (Math.PI * 2 * index) / 84,
+    radius: 0.1 + Math.random() * 0.38,
+    drift: 0.18 + Math.random() * 0.54,
+    size: 1 + Math.random() * 4.6,
+    twist: 1.8 + Math.random() * 4.4,
+    lane: index % 3,
   }));
 }
 
-function triggerVisibleEffect() {
-  refs.domainOverlay.classList.remove("active");
-  void refs.domainOverlay.offsetWidth;
-  refs.domainOverlay.classList.add("active");
-  refs.stageFrame.classList.add("domain-live");
+function dispararEfeitoVisivel() {
+  referencias.sobreposicaoDominio.classList.remove("active");
+  void referencias.sobreposicaoDominio.offsetWidth;
+  referencias.sobreposicaoDominio.classList.add("active");
+  referencias.quadroPalco.classList.add("domain-live");
   window.setTimeout(() => {
-    refs.stageFrame.classList.remove("domain-live");
-    refs.domainOverlay.classList.remove("active");
-  }, EFFECT_DURATION_MS);
+    referencias.quadroPalco.classList.remove("domain-live");
+    referencias.sobreposicaoDominio.classList.remove("active");
+  }, DURACAO_EFEITO_MS);
 }
 
-function activateDomain() {
+function ativarDominio() {
   const now = Date.now();
-  if (now < state.domainCooldownUntil) {
+  if (now < estado.resfriamentoDominioAte) {
     return;
   }
 
-  state.domainCooldownUntil = now + 5200;
-  state.gestureActive = false;
-  state.needsGestureReset = true;
-  state.stableFrames = 0;
-  state.effectStartAt = now;
-  state.effectCenter = {
-    x: state.lastMetrics?.centerX || 0.5,
-    y: state.lastMetrics?.centerY || 0.45,
+  estado.resfriamentoDominioAte = now + 5200;
+  estado.precisaRearmarGesto = true;
+  estado.quadrosEstaveis = 0;
+  estado.efeitoIniciadoEm = now;
+  estado.centroEfeito = {
+    x: estado.ultimasMetricas?.centerX || 0.5,
+    y: estado.ultimasMetricas?.centerY || 0.45,
   };
-  generateParticles();
-  triggerVisibleEffect();
+  gerarParticulas();
+  dispararEfeitoVisivel();
   playDomainSound();
   queueClipCapture();
-  setPill(refs.gestureStatus, "Ativado", "hot");
-  setDebug("Unlimited Void disparado. Espera o cooldown e rearmamento.");
+  definirSelo(referencias.statusGesto, "Ativado", "hot");
+  definirDebug("Unlimited Void disparado. Espera o cooldown e rearmamento.");
 
   if (navigator.vibrate) {
     navigator.vibrate([130, 40, 170, 60, 220]);
   }
 
   window.setTimeout(() => {
-    if (state.cameraActive) {
-      setDebug("Pronto para outra invocacao. Solta o gesto e faz de novo.");
+    if (estado.cameraAtiva) {
+      definirDebug("Pronto para outra invocacao. Solta o gesto e faz de novo.");
     }
-  }, EFFECT_DURATION_MS);
+  }, DURACAO_EFEITO_MS);
 }
 
-function drawAnimeDomainBackground(context, width, height, timestamp, progress) {
+function desenharFundoAnimeDominio(context, width, height, timestamp, progress) {
   const centerX = width * 0.5;
   const centerY = height * 0.46;
   const sweep = timestamp * 0.001;
@@ -934,6 +1141,21 @@ function drawAnimeDomainBackground(context, width, height, timestamp, progress) 
   context.fillRect(0, 0, width, height);
 
   context.save();
+  context.globalCompositeOperation = "screen";
+  for (let beam = 0; beam < 8; beam += 1) {
+    const offset = (beam - 3.5) * width * 0.05;
+    const alpha = 0.06 + (beam % 2) * 0.03;
+    const pillar = context.createLinearGradient(centerX + offset, 0, centerX + offset, height);
+    pillar.addColorStop(0, "rgba(255,255,255,0)");
+    pillar.addColorStop(0.2, `rgba(130, 219, 255, ${alpha})`);
+    pillar.addColorStop(0.5, `rgba(214, 246, 255, ${alpha + 0.06})`);
+    pillar.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = pillar;
+    context.fillRect(centerX + offset - width * 0.015, 0, width * 0.03, height);
+  }
+  context.restore();
+
+  context.save();
   context.strokeStyle = "rgba(171, 232, 255, 0.12)";
   context.lineWidth = 1.25;
   for (let column = -12; column <= 12; column += 1) {
@@ -952,6 +1174,26 @@ function drawAnimeDomainBackground(context, width, height, timestamp, progress) 
     context.beginPath();
     context.moveTo(inset, y);
     context.lineTo(width - inset, y);
+    context.stroke();
+  }
+  context.restore();
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  context.strokeStyle = "rgba(196, 242, 255, 0.12)";
+  for (let tunnel = 0; tunnel < 7; tunnel += 1) {
+    const ratio = tunnel / 6;
+    context.lineWidth = 1.2 + ratio * 1.4;
+    context.beginPath();
+    context.ellipse(
+      centerX,
+      centerY + ratio * height * 0.12,
+      width * (0.08 + ratio * 0.34 + progress * 0.05),
+      height * (0.025 + ratio * 0.12),
+      0,
+      0,
+      Math.PI * 2
+    );
     context.stroke();
   }
   context.restore();
@@ -994,47 +1236,61 @@ function drawAnimeDomainBackground(context, width, height, timestamp, progress) 
     context.stroke();
   }
   context.restore();
+
+  context.save();
+  context.globalCompositeOperation = "screen";
+  for (let arc = 0; arc < 10; arc += 1) {
+    const radius = width * (0.11 + arc * 0.028);
+    const start = sweep * 0.7 + arc * 0.4;
+    const end = start + Math.PI * (0.12 + (arc % 3) * 0.04);
+    context.beginPath();
+    context.lineWidth = 1.2;
+    context.strokeStyle = `rgba(255,255,255,${0.08 + (arc % 4) * 0.03})`;
+    context.arc(centerX, centerY, radius, start, end);
+    context.stroke();
+  }
+  context.restore();
 }
 
-function drawForegroundCutout(context, width, height, progress) {
-  if (!state.segmentation.ready) {
-    drawMirroredSource(context, refs.camera, width, height);
+function desenharRecorteFrontal(context, width, height, progress) {
+  if (!estado.segmentacao.pronta) {
+    desenharFonteEspelhada(context, referencias.camera, width, height);
     return;
   }
 
-  const personContext = refs.personCanvas.getContext("2d");
+  const personContext = referencias.telaPessoa.getContext("2d");
   personContext.save();
   personContext.clearRect(0, 0, width, height);
-  drawMirroredSource(personContext, refs.camera, width, height);
+  desenharFonteEspelhada(personContext, referencias.camera, width, height);
   personContext.globalCompositeOperation = "destination-in";
-  drawMirroredSource(personContext, refs.segmentationCanvas, width, height);
+  desenharFonteEspelhada(personContext, referencias.telaSegmentacao, width, height);
   personContext.globalCompositeOperation = "source-over";
   personContext.restore();
 
   context.save();
   context.shadowColor = `rgba(164, 242, 255, ${0.24 + (1 - progress) * 0.22})`;
   context.shadowBlur = 22;
-  context.drawImage(refs.personCanvas, 0, 0, width, height);
+  context.drawImage(referencias.telaPessoa, 0, 0, width, height);
   context.restore();
 }
 
-function drawCompositeFrame(timestamp) {
-  const width = refs.compositeCanvas.width;
-  const height = refs.compositeCanvas.height;
-  if (!width || !height || refs.camera.readyState < 2) {
-    state.animationFrameId = window.requestAnimationFrame(drawCompositeFrame);
+function desenharQuadroComposto(timestamp) {
+  const width = referencias.telaComposta.width;
+  const height = referencias.telaComposta.height;
+  if (!width || !height || referencias.camera.readyState < 2) {
+    estado.idQuadroAnimacao = window.requestAnimationFrame(desenharQuadroComposto);
     return;
   }
 
-  const context = refs.compositeCanvas.getContext("2d");
+  const context = referencias.telaComposta.getContext("2d");
   context.save();
   context.clearRect(0, 0, width, height);
-  const progress = effectProgressAt(timestamp);
+  const progress = progressoEfeitoEm(timestamp);
   if (progress !== null) {
-    drawAnimeDomainBackground(context, width, height, timestamp, progress);
-    drawForegroundCutout(context, width, height, progress);
+    desenharFundoAnimeDominio(context, width, height, timestamp, progress);
+    desenharRecorteFrontal(context, width, height, progress);
   } else {
-    drawMirroredSource(context, refs.camera, width, height);
+    desenharFonteEspelhada(context, referencias.camera, width, height);
   }
   context.restore();
 
@@ -1044,19 +1300,20 @@ function drawCompositeFrame(timestamp) {
   context.fillStyle = vignette;
   context.fillRect(0, 0, width, height);
 
-  drawDomainCanvasEffect(context, width, height, timestamp);
-  state.animationFrameId = window.requestAnimationFrame(drawCompositeFrame);
+  desenharEfeitoTelaDominio(context, width, height, timestamp);
+  estado.idQuadroAnimacao = window.requestAnimationFrame(desenharQuadroComposto);
 }
 
-function drawDomainCanvasEffect(context, width, height, timestamp) {
-  const progress = effectProgressAt(timestamp);
+function desenharEfeitoTelaDominio(context, width, height, timestamp) {
+  const progress = progressoEfeitoEm(timestamp);
   if (progress === null) {
     return;
   }
-  const centerX = state.effectCenter.x * width;
-  const centerY = state.effectCenter.y * height;
-  const flashAlpha = clamp(1 - progress * 4.2, 0, 0.9);
-  const haloAlpha = clamp(0.9 - progress * 0.8, 0, 0.9);
+  const centerX = estado.centroEfeito.x * width;
+  const centerY = estado.centroEfeito.y * height;
+  const flashAlpha = limitar(1 - progress * 4.2, 0, 0.9);
+  const haloAlpha = limitar(0.9 - progress * 0.8, 0, 0.9);
+  const pulse = 1 - Math.abs(Math.sin(progress * Math.PI * 2.6));
 
   context.save();
   context.globalCompositeOperation = "screen";
@@ -1069,6 +1326,18 @@ function drawDomainCanvasEffect(context, width, height, timestamp) {
   context.fillStyle = flash;
   context.fillRect(0, 0, width, height);
 
+  for (let ray = 0; ray < 14; ray += 1) {
+    const angle = ray * (Math.PI / 7) + progress * 1.6;
+    const inner = width * 0.06;
+    const outer = width * (0.26 + progress * 0.42);
+    context.beginPath();
+    context.moveTo(centerX + Math.cos(angle) * inner, centerY + Math.sin(angle) * inner);
+    context.lineTo(centerX + Math.cos(angle) * outer, centerY + Math.sin(angle) * outer);
+    context.strokeStyle = `rgba(220, 247, 255, ${0.08 + pulse * 0.12})`;
+    context.lineWidth = 2 + (ray % 3);
+    context.stroke();
+  }
+
   context.strokeStyle = `rgba(200, 248, 255, ${0.45 - progress * 0.35})`;
   context.lineWidth = 2;
   for (let line = -16; line <= 16; line += 1) {
@@ -1079,14 +1348,18 @@ function drawDomainCanvasEffect(context, width, height, timestamp) {
     context.stroke();
   }
 
-  state.effectParticles.forEach((particle) => {
+  estado.particulasEfeito.forEach((particle) => {
     const orbit = particle.radius * Math.min(width, height);
     const travel = orbit + progress * particle.drift * 220;
-    const x = centerX + Math.cos(particle.angle + progress * 6) * travel;
-    const y = centerY + Math.sin(particle.angle + progress * 4.8) * travel;
+    const x = centerX + Math.cos(particle.angle + progress * particle.twist) * travel;
+    const y = centerY + Math.sin(particle.angle + progress * (particle.twist - 0.8)) * (travel * (0.72 + particle.lane * 0.12));
     context.beginPath();
     context.arc(x, y, particle.size, 0, Math.PI * 2);
-    context.fillStyle = `rgba(255,255,255,${0.75 - progress * 0.55})`;
+    context.fillStyle = particle.lane === 0
+      ? `rgba(255,255,255,${0.75 - progress * 0.55})`
+      : particle.lane === 1
+        ? `rgba(170,234,255,${0.64 - progress * 0.42})`
+        : `rgba(255,215,153,${0.52 - progress * 0.35})`;
     context.fill();
   });
 
@@ -1102,6 +1375,33 @@ function drawDomainCanvasEffect(context, width, height, timestamp) {
   context.lineWidth = 2.5;
   context.stroke();
 
+  context.beginPath();
+  context.arc(centerX, centerY, width * (0.02 + progress * 0.08), 0, Math.PI * 2);
+  context.strokeStyle = `rgba(255,255,255,${0.95 - progress * 0.65})`;
+  context.lineWidth = 1.5;
+  context.stroke();
+
+  for (let shock = 0; shock < 3; shock += 1) {
+    const shockProgress = progress - shock * 0.12;
+    if (shockProgress <= 0) {
+      continue;
+    }
+
+    context.beginPath();
+    context.ellipse(
+      centerX,
+      centerY,
+      width * (0.08 + shockProgress * 0.22),
+      width * (0.028 + shockProgress * 0.1),
+      0,
+      0,
+      Math.PI * 2
+    );
+    context.strokeStyle = `rgba(201, 246, 255, ${0.3 - shockProgress * 0.22})`;
+    context.lineWidth = 2;
+    context.stroke();
+  }
+
   if (progress > 0.16) {
     context.font = `700 ${Math.max(30, width * 0.055)}px 'Segoe UI'`;
     context.textAlign = "center";
@@ -1115,150 +1415,185 @@ function drawDomainCanvasEffect(context, width, height, timestamp) {
   context.restore();
 }
 
-function startRenderLoop() {
-  if (state.animationFrameId) {
+function iniciarLoopRenderizacao() {
+  if (estado.idQuadroAnimacao) {
     return;
   }
 
-  state.animationFrameId = window.requestAnimationFrame(drawCompositeFrame);
+  estado.idQuadroAnimacao = window.requestAnimationFrame(desenharQuadroComposto);
 }
 
-async function startSegmentation() {
+async function iniciarSegmentacao() {
   if (!window.SelfieSegmentation) {
-    state.segmentation.supported = false;
-    refs.pwaText.textContent = "Segmentacao nao carregou. O fundo especial pode falhar.";
+    estado.segmentacao.suportado = false;
+    referencias.textoPwa.textContent = "Segmentacao nao carregou. O fundo especial pode falhar.";
     return;
   }
 
-  state.segmentation.model = new SelfieSegmentation({
+  estado.segmentacao.modelo = new SelfieSegmentation({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
   });
 
-  state.segmentation.model.setOptions({
+  estado.segmentacao.modelo.setOptions({
     modelSelection: 1,
   });
 
-  state.segmentation.model.onResults((results) => {
-    if (!results.segmentationMask || !resizeCanvases()) {
+  estado.segmentacao.modelo.onResults((results) => {
+    if (!results.segmentationMask || !redimensionarTelas()) {
       return;
     }
 
-    const width = refs.segmentationCanvas.width;
-    const height = refs.segmentationCanvas.height;
-    const segmentationContext = refs.segmentationCanvas.getContext("2d");
+    const width = referencias.telaSegmentacao.width;
+    const height = referencias.telaSegmentacao.height;
+    const segmentationContext = referencias.telaSegmentacao.getContext("2d");
     segmentationContext.save();
     segmentationContext.clearRect(0, 0, width, height);
     segmentationContext.filter = "blur(4px)";
     segmentationContext.drawImage(results.segmentationMask, 0, 0, width, height);
     segmentationContext.restore();
-    state.segmentation.ready = true;
-    state.segmentation.lastUpdatedAt = Date.now();
+    estado.segmentacao.pronta = true;
+    estado.segmentacao.ultimaAtualizacaoEm = Date.now();
   });
 }
 
-async function startHandTracking() {
+async function iniciarRastreamentoMao() {
   if (!window.Hands || !window.Camera) {
     throw new Error("MediaPipe nao carregou. Confira a conexao com a internet.");
   }
 
-  await startSegmentation();
-  state.hands = new Hands({
+  await iniciarSegmentacao();
+  estado.hands = new Hands({
     locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
   });
 
-  state.hands.setOptions({
+  estado.hands.setOptions({
     maxNumHands: 1,
     modelComplexity: 1,
     minDetectionConfidence: 0.76,
     minTrackingConfidence: 0.7,
   });
 
-  state.hands.onResults((results) => {
-    state.lastFrameAt = Date.now();
+  estado.hands.onResults((results) => {
+    estado.ultimoQuadroEm = Date.now();
 
     if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-      state.lastLandmarks = null;
-      state.lastMetrics = null;
-      state.lastGestureResult = null;
-      state.gestureActive = false;
-      state.stableFrames = Math.max(0, state.stableFrames - 2);
-      setMeter(refs.gestureMeter, 0);
-      setMeter(refs.stabilityMeter, clamp(state.stableFrames / 12, 0, 1));
-      setPill(refs.handStatus, "Sem mao", "idle");
-      setPill(refs.gestureStatus, "Nao detectado", "idle");
-      clearHandOverlay();
-      setFeedbackItem(refs.feedbackFrame, "warn", "Mostre a mao inteira para a camera");
-      if (!state.calibrationMode) {
-        setDebug("Posiciona a mao no centro para o rastreio voltar.");
+      estado.ultimosPontos = null;
+      estado.ultimasMetricas = null;
+      estado.ultimoResultadoGesto = null;
+      estado.pontuacaoSuavizadaGesto = 0;
+      estado.quadrosEstaveis = Math.max(0, estado.quadrosEstaveis - 2);
+      definirMedidor(referencias.medidorGesto, 0);
+      definirMedidor(referencias.medidorEstabilidade, limitar(estado.quadrosEstaveis / obterQuadrosNecessariosAtivacao(), 0, 1));
+      definirMedidor(referencias.medidorMovimento, 0);
+      definirSelo(referencias.statusMao, "Sem mao", "idle");
+      definirSelo(referencias.statusGesto, "Nao detectado", "idle");
+      definirSelo(referencias.statusMovimento, "Sem quadro", "idle");
+      limparSobreposicaoMao();
+      definirItemRetorno(referencias.retornoEnquadramento, "warn", "Mostre a mao inteira para a camera");
+      definirItemRetorno(referencias.retornoMovimento, "warn", "Segure o gesto firme para ativar.");
+      aplicarFocoTreino(null);
+      atualizarGuiaPalco({
+        rastreada: false,
+        pronto: false,
+        texto: estado.modoTreinoGuiado
+          ? "Volte com a mao para continuar o treino"
+          : "Encaixe sua mao aqui",
+      });
+      if (!estado.modoCalibracao) {
+        definirDebug("Posiciona a mao no centro para o rastreio voltar.");
       }
       return;
     }
 
     const landmarks = results.multiHandLandmarks[0];
-    const metrics = computeGestureMetrics(landmarks);
-    const result = scoreGesture(metrics);
+    const metrics = calcularMetricasGesto(landmarks);
+    const result = pontuarGesto(metrics);
     const gestureScore = result.overall;
 
-    state.lastLandmarks = landmarks;
-    state.lastMetrics = metrics;
-    state.lastGestureResult = result;
-    state.scoreHistory.push(gestureScore);
-    if (state.scoreHistory.length > 12) {
-      state.scoreHistory.shift();
+    estado.ultimosPontos = landmarks;
+    estado.ultimasMetricas = metrics;
+    estado.ultimoResultadoGesto = result;
+    estado.historicoPontuacao.push(gestureScore);
+    if (estado.historicoPontuacao.length > JANELA_SUAVIZACAO_GESTO) {
+      estado.historicoPontuacao.shift();
     }
+    const gestureScoreSuavizado = media(estado.historicoPontuacao);
+    estado.pontuacaoSuavizadaGesto = gestureScoreSuavizado;
+    const limiarBruto = obterLimiarGestoBruto();
+    const limiarSuavizado = obterLimiarGestoSuavizado();
+    const quadrosNecessarios = obterQuadrosNecessariosAtivacao();
 
-    if (gestureScore > 0.76) {
-      state.stableFrames += 1;
+    if (
+      gestureScore > limiarBruto &&
+      gestureScoreSuavizado > limiarBruto - 0.03 &&
+      result.parts.cross > 0.6
+    ) {
+      estado.quadrosEstaveis += 1;
     } else {
-      state.stableFrames = Math.max(0, state.stableFrames - 2);
+      estado.quadrosEstaveis = Math.max(0, estado.quadrosEstaveis - 2);
     }
 
-    const stabilityScore = clamp(state.stableFrames / 12, 0, 1);
-    const gestureReady = gestureScore > 0.76 && stabilityScore > 0.68;
+    const stabilityScore = limitar(estado.quadrosEstaveis / quadrosNecessarios, 0, 1);
+    const gestureReady =
+      gestureScore > limiarBruto &&
+      gestureScoreSuavizado > limiarSuavizado &&
+      stabilityScore > 0.72 &&
+      result.parts.cross > 0.72 &&
+      result.parts.close > 0.68 &&
+      result.parts.framing > 0.55;
 
-    setMeter(refs.gestureMeter, gestureScore);
-    setMeter(refs.stabilityMeter, stabilityScore);
-    drawHandOverlay(landmarks, gestureScore);
-    setPill(refs.handStatus, "Mao rastreada", "ok");
-
-    if (state.needsGestureReset) {
-      if (gestureScore < 0.34) {
-        state.needsGestureReset = false;
-        setPill(refs.gestureStatus, "Rearmado", "idle");
-        setDebug("Rearmado. Agora pode montar o gesto de novo.");
-      } else {
-        setPill(refs.gestureStatus, "Solte e refaca", "warn");
-      }
-      updateGuidance(metrics, result, false);
-      return;
-    }
-
-    if (state.calibrationMode) {
-      setPill(refs.gestureStatus, "Calibrando", "warn");
-      updateGuidance(metrics, result, false);
-      updateCalibrationState(metrics);
-      return;
-    }
-
-    setPill(
-      refs.gestureStatus,
-      gestureReady ? "Pronto" : gestureScore > 0.48 ? "Lendo" : "Nao detectado",
-      gestureReady ? "ok" : gestureScore > 0.48 ? "warn" : "idle"
+    definirMedidor(referencias.medidorGesto, gestureScoreSuavizado);
+    definirMedidor(referencias.medidorEstabilidade, stabilityScore);
+    definirMedidor(referencias.medidorMovimento, result.parts.framing);
+    desenharSobreposicaoMao(landmarks, gestureScore);
+    atualizarGuiaPalco({ rastreada: true, pronto: gestureReady });
+    definirSelo(referencias.statusMao, "Mao rastreada", "ok");
+    definirSelo(
+      referencias.statusMovimento,
+      result.parts.framing > 0.72 ? "Bem enquadrada" : result.parts.framing > 0.46 ? "Quase la" : "Ajuste a mao",
+      result.parts.framing > 0.72 ? "ok" : result.parts.framing > 0.46 ? "warn" : "idle"
     );
 
-    updateGuidance(metrics, result, gestureReady);
+    if (estado.precisaRearmarGesto) {
+      if (gestureScoreSuavizado < obterLimiarRearmeGesto()) {
+        estado.precisaRearmarGesto = false;
+        definirSelo(referencias.statusGesto, "Rearmado", "idle");
+        definirDebug("Rearmado. Agora pode montar o gesto de novo.");
+      } else {
+        definirSelo(referencias.statusGesto, "Solte e refaca", "warn");
+      }
+      atualizarOrientacoes(metrics, result, false);
+      atualizarTreinoGuiado(result);
+      return;
+    }
 
-    const motionSatisfied = state.motionGranted ? motionRecentlyDetected() : true;
-    if (gestureReady && motionSatisfied) {
-      activateDomain();
+    if (estado.modoCalibracao) {
+      definirSelo(referencias.statusGesto, "Calibrando", "warn");
+      atualizarOrientacoes(metrics, result, false);
+      atualizarEstadoCalibracao(metrics);
+      aplicarFocoTreino(result);
+      return;
+    }
+
+    definirSelo(
+      referencias.statusGesto,
+      gestureReady ? "Pronto" : gestureScoreSuavizado > 0.48 ? "Lendo" : "Nao detectado",
+      gestureReady ? "ok" : gestureScoreSuavizado > 0.48 ? "warn" : "idle"
+    );
+
+    atualizarOrientacoes(metrics, result, gestureReady);
+    atualizarTreinoGuiado(result);
+
+    if (gestureReady) {
+      ativarDominio();
     }
   });
 
-  state.cameraFeed = new Camera(refs.camera, {
+  estado.fluxoCamera = new Camera(referencias.camera, {
     onFrame: async () => {
-      const tasks = [state.hands.send({ image: refs.camera })];
-      if (state.segmentation.model) {
-        tasks.push(state.segmentation.model.send({ image: refs.camera }));
+      const tasks = [estado.hands.send({ image: referencias.camera })];
+      if (estado.segmentacao.modelo) {
+        tasks.push(estado.segmentacao.modelo.send({ image: referencias.camera }));
       }
       await Promise.all(tasks);
     },
@@ -1266,135 +1601,183 @@ async function startHandTracking() {
     height: 720,
   });
 
-  await state.cameraFeed.start();
-  state.cameraActive = true;
-  resizeCanvases();
-  refs.stageFrame.classList.add("render-live");
-  startRenderLoop();
-  startCompositeRecorder();
-  setPill(refs.cameraStatus, "Ativa", "ok");
-  refs.calibrateButton.disabled = false;
-  refs.resetCalibrationButton.disabled = !state.calibrationProfile;
-  setDebug("Camera online. Quando o dominio ativar, o fundo vai virar a cena atras de voce.");
-  updateRecordingText();
+  await estado.fluxoCamera.start();
+  estado.cameraAtiva = true;
+  redimensionarTelas();
+  referencias.quadroPalco.classList.add("render-live");
+  iniciarLoopRenderizacao();
+  iniciarGravadorComposto();
+  definirSelo(referencias.statusCamera, "Ativa", "ok");
+  definirSelo(referencias.statusMovimento, "Aguardando mao", "idle");
+  referencias.botaoCalibrar.disabled = false;
+  referencias.botaoTreino.disabled = false;
+  referencias.botaoResetarCalibracao.disabled = !estado.perfilCalibracao;
+  atualizarGuiaPalco({ rastreada: false, pronto: false });
+  definirDebug("Camera online. Monte o selo do Gojo com indicador e medio cruzados.");
+  atualizarTextoGravacao();
 }
 
-async function registerProgressiveWebApp() {
+async function registrarAplicativoProgressivo() {
   const standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
 
   if (standalone) {
-    refs.pwaText.textContent = "Rodando como app instalado.";
+    referencias.textoPwa.textContent = "Rodando como app instalado.";
   }
 
   if (!("serviceWorker" in navigator)) {
-    refs.pwaText.textContent = "Service Worker nao suportado aqui.";
+    referencias.textoPwa.textContent = "Service Worker nao suportado aqui.";
     return;
   }
 
   if (!window.isSecureContext) {
-    refs.pwaText.textContent = "PWA pronto, mas o Service Worker precisa de localhost ou HTTPS.";
+    referencias.textoPwa.textContent = "PWA pronto, mas o Service Worker precisa de localhost ou HTTPS.";
     return;
   }
 
   try {
     await navigator.serviceWorker.register("./service-worker.js");
-    refs.pwaText.textContent = "PWA pronto. A shell e os assets vao ficar disponiveis offline apos a primeira carga.";
+    referencias.textoPwa.textContent = "PWA pronto. A shell e os assets vao ficar disponiveis offline apos a primeira carga.";
   } catch (error) {
-    refs.pwaText.textContent = "Falhou ao registrar o PWA neste navegador.";
+    referencias.textoPwa.textContent = "Falhou ao registrar o PWA neste navegador.";
   }
 }
 
-function handleInstallPrompt() {
+function tratarPromptInstalacao() {
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
-    state.installPrompt = event;
-    refs.installButton.hidden = false;
-    refs.pwaText.textContent = "Instalacao disponivel. Toque em instalar para fixar como app.";
+    estado.promptInstalacao = event;
+    referencias.botaoInstalar.hidden = false;
+    referencias.textoPwa.textContent = "Instalacao disponivel. Toque em instalar para fixar como app.";
   });
 
   window.addEventListener("appinstalled", () => {
-    refs.installButton.hidden = true;
-    refs.pwaText.textContent = "App instalado com sucesso.";
+    referencias.botaoInstalar.hidden = true;
+    referencias.textoPwa.textContent = "App instalado com sucesso.";
   });
 }
 
-async function installApp() {
-  if (!state.installPrompt) {
-    refs.pwaText.textContent = "Ainda nao existe prompt de instalacao neste dispositivo.";
+async function instalarAplicativo() {
+  if (!estado.promptInstalacao) {
+    referencias.textoPwa.textContent = "Ainda nao existe prompt de instalacao neste dispositivo.";
     return;
   }
 
-  state.installPrompt.prompt();
-  await state.installPrompt.userChoice;
-  state.installPrompt = null;
-  refs.installButton.hidden = true;
+  estado.promptInstalacao.prompt();
+  await estado.promptInstalacao.userChoice;
+  estado.promptInstalacao = null;
+  referencias.botaoInstalar.hidden = true;
 }
 
-function beginCalibration() {
-  if (!state.cameraActive) {
-    setDebug("Liga a camera antes de calibrar.");
+function atualizarSensibilidade(event) {
+  estado.ajustes.sensibilidade = Number(event.target.value);
+  salvarAjustes();
+  atualizarPainelAjustes();
+}
+
+function atualizarSustentacao(event) {
+  estado.ajustes.sustentacao = Number(event.target.value);
+  salvarAjustes();
+  atualizarPainelAjustes();
+}
+
+function iniciarTreinoGuiado() {
+  if (!estado.cameraAtiva) {
+    definirDebug("Ligue a camera antes de iniciar o treino.");
     return;
   }
 
-  if (state.calibrationMode) {
-    state.calibrationMode = false;
-    state.calibrationSamples = [];
-    refs.calibrateButton.textContent = state.calibrationProfile ? "Recalibrar gesto" : "Calibrar gesto";
-    updateCalibrationText();
-    setDebug("Calibracao cancelada.");
+  if (estado.modoTreinoGuiado) {
+    concluirTreinoGuiado();
+    definirDebug("Treino guiado cancelado.");
+    atualizarGuiaPalco({ rastreada: !!estado.ultimosPontos, pronto: false });
     return;
   }
 
-  state.calibrationMode = true;
-  state.calibrationSamples = [];
-  refs.calibrateButton.textContent = "Calibrando...";
-  setDebug("Segure o gesto do Gojo por um instante para salvar o seu padrao.");
+  estado.modoCalibracao = false;
+  estado.amostrasCalibracao = [];
+  referencias.botaoCalibrar.textContent = estado.perfilCalibracao ? "Recalibrar gesto" : "Calibrar gesto";
+  estado.modoTreinoGuiado = true;
+  estado.etapaTreino = 0;
+  referencias.botaoTreino.textContent = "Parar treino";
+  aplicarFocoTreino(estado.ultimoResultadoGesto);
+  atualizarGuiaPalco({
+    rastreada: !!estado.ultimosPontos,
+    pronto: false,
+    texto: "Traga a mao para o centro do guia.",
+  });
+  definirDebug("Treino guiado iniciado. Vamos encaixar a mao e montar o selo passo a passo.");
 }
 
-function resetCalibration() {
-  clearCalibrationProfile();
-  refs.calibrateButton.textContent = "Calibrar gesto";
-  setDebug("Calibracao removida. O detector voltou para o perfil padrao.");
+function iniciarCalibracao() {
+  if (!estado.cameraAtiva) {
+    definirDebug("Liga a camera antes de calibrar.");
+    return;
+  }
+
+  if (estado.modoCalibracao) {
+    estado.modoCalibracao = false;
+    estado.amostrasCalibracao = [];
+    referencias.botaoCalibrar.textContent = estado.perfilCalibracao ? "Recalibrar gesto" : "Calibrar gesto";
+    atualizarTextoCalibracao();
+    definirDebug("Calibracao cancelada.");
+    return;
+  }
+
+  if (estado.modoTreinoGuiado) {
+    concluirTreinoGuiado();
+  }
+
+  estado.modoCalibracao = true;
+  estado.amostrasCalibracao = [];
+  referencias.botaoCalibrar.textContent = "Calibrando...";
+  definirDebug("Segure o gesto do Gojo por um instante para salvar o seu padrao.");
 }
 
-async function startExperience() {
-  refs.startButton.disabled = true;
-  refs.startButton.textContent = "Inicializando...";
-  setDebug("Pedindo camera e carregando o rastreio da mao.");
+function resetarCalibracao() {
+  limparPerfilCalibracao();
+  referencias.botaoCalibrar.textContent = "Calibrar gesto";
+  definirDebug("Calibracao removida. O detector voltou para o perfil padrao.");
+}
+
+async function iniciarExperiencia() {
+  referencias.botaoIniciar.disabled = true;
+  referencias.botaoIniciar.textContent = "Inicializando...";
+  definirDebug("Pedindo camera e carregando o rastreio da mao.");
 
   try {
-    await startHandTracking();
-    refs.startButton.textContent = "Camera liberada";
+    await iniciarRastreamentoMao();
+    referencias.botaoIniciar.textContent = "Camera liberada";
   } catch (error) {
-    refs.startButton.disabled = false;
-    refs.startButton.textContent = "Tentar novamente";
-    setPill(refs.cameraStatus, "Falhou", "hot");
-    setDebug(error.message || "Nao foi possivel iniciar o demo.");
+    referencias.botaoIniciar.disabled = false;
+    referencias.botaoIniciar.textContent = "Tentar novamente";
+    definirSelo(referencias.statusCamera, "Falhou", "hot");
+    definirDebug(error.message || "Nao foi possivel iniciar o demo.");
   }
 }
 
-function initUi() {
-  updateCalibrationText();
-  updateRecordingText();
-  handleInstallPrompt();
-  registerProgressiveWebApp();
+function iniciarInterface() {
+  atualizarTextoCalibracao();
+  atualizarTextoGravacao();
+  atualizarPainelAjustes();
+  tratarPromptInstalacao();
+  registrarAplicativoProgressivo();
 
-  if (!state.motionSupported) {
-    setPill(refs.motionStatus, "Nao usado", "idle");
-  } else {
-    setPill(refs.motionStatus, "Opcional", "idle");
-  }
+  definirSelo(referencias.statusMovimento, "Aguardando", "idle");
+  atualizarGuiaPalco({ rastreada: false, pronto: false });
+  referencias.textoPwa.textContent = "A versao web e a principal. O dominio ativa so com o gesto.";
 
-  refs.pwaText.textContent = "O gesto sozinho ja ativa o dominio. Sensor agora e opcional.";
-
-  if (!state.recorder.supported) {
-    refs.recordingText.textContent = "Clip recorder indisponivel neste navegador.";
+  if (!estado.recorder.suportado) {
+    referencias.textoGravacao.textContent = "Clip recorder indisponivel neste navegador.";
   }
 }
 
-refs.startButton.addEventListener("click", startExperience);
-refs.installButton.addEventListener("click", installApp);
-refs.calibrateButton.addEventListener("click", beginCalibration);
-refs.resetCalibrationButton.addEventListener("click", resetCalibration);
+referencias.botaoIniciar.addEventListener("click", iniciarExperiencia);
+referencias.botaoInstalar.addEventListener("click", instalarAplicativo);
+referencias.botaoCalibrar.addEventListener("click", iniciarCalibracao);
+referencias.botaoTreino.addEventListener("click", iniciarTreinoGuiado);
+referencias.botaoResetarCalibracao.addEventListener("click", resetarCalibracao);
+referencias.controleSensibilidade.addEventListener("input", atualizarSensibilidade);
+referencias.controleSustentacao.addEventListener("input", atualizarSustentacao);
 
-initUi();
+iniciarInterface();
+

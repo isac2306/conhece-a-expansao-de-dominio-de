@@ -41,13 +41,24 @@ body::before {
 }
 
 .app-shell {
+  position: relative;
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
   padding: 32px 0 56px;
 }
 
 .hero {
+  position: relative;
   margin-bottom: 28px;
+  padding: 8px 4px 12px;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -8px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(143, 239, 255, 0.26), transparent);
 }
 
 .eyebrow {
@@ -62,6 +73,8 @@ body::before {
   margin: 0;
   font-size: clamp(2.4rem, 4vw, 4.5rem);
   line-height: 0.96;
+  letter-spacing: -0.04em;
+  text-shadow: 0 10px 40px rgba(18, 215, 255, 0.18);
 }
 
 .intro {
@@ -166,9 +179,21 @@ body::before {
   overflow: hidden;
   border-radius: 22px;
   isolation: isolate;
+  border: 1px solid rgba(143, 239, 255, 0.16);
   background:
     radial-gradient(circle at center, rgba(66, 160, 214, 0.16), transparent 42%),
     linear-gradient(180deg, #02070a 0%, #0d2332 100%);
+}
+
+.stage-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.06), transparent 44%),
+    linear-gradient(135deg, rgba(143, 239, 255, 0.06), transparent 34%);
+  z-index: 0;
 }
 
 .stage-frame.domain-live {
@@ -178,6 +203,7 @@ body::before {
 #camera,
 #compositeCanvas,
 #overlay,
+.stage-guide,
 .scanline-layer,
 .domain-overlay {
   position: absolute;
@@ -204,6 +230,7 @@ body::before {
 
 #compositeCanvas,
 #overlay,
+.stage-guide,
 .scanline-layer,
 .domain-overlay {
   pointer-events: none;
@@ -215,6 +242,48 @@ body::before {
 
 .stage-frame.render-live #compositeCanvas {
   opacity: 1;
+}
+
+.stage-guide {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  opacity: 0.78;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.stage-guide.tracked {
+  opacity: 0.52;
+}
+
+.stage-guide.ready {
+  opacity: 0.14;
+}
+
+.stage-guide.hidden {
+  opacity: 0;
+}
+
+.stage-guide-image {
+  width: min(42%, 320px);
+  max-width: 46vw;
+  filter: drop-shadow(0 0 24px rgba(143, 239, 255, 0.34));
+  transform: translateY(4%);
+}
+
+.stage-guide-label {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(5, 17, 27, 0.54);
+  border: 1px solid rgba(143, 239, 255, 0.18);
+  color: rgba(232, 248, 255, 0.88);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(10px);
 }
 
 .scanline-layer {
@@ -239,7 +308,10 @@ body::before {
 .domain-flash,
 .domain-vortex,
 .domain-stars,
-.domain-grid {
+.domain-grid,
+.domain-rays,
+.domain-shockwave,
+.domain-sigil {
   position: absolute;
   inset: 0;
 }
@@ -292,6 +364,43 @@ body::before {
 
 .domain-overlay.active .domain-grid {
   animation: grid-tilt 2500ms linear forwards;
+}
+
+.domain-rays {
+  opacity: 0;
+  mix-blend-mode: screen;
+  background:
+    conic-gradient(from 0deg at 50% 48%, rgba(255, 255, 255, 0.24), transparent 14%, rgba(145, 231, 255, 0.16) 24%, transparent 34%, rgba(255, 255, 255, 0.2) 46%, transparent 58%, rgba(145, 231, 255, 0.14) 72%, transparent 84%, rgba(255, 255, 255, 0.22)),
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.18), transparent 44%);
+  filter: blur(10px);
+}
+
+.domain-overlay.active .domain-rays {
+  animation: rays-spin 2400ms ease-out forwards;
+}
+
+.domain-shockwave {
+  opacity: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(233, 250, 255, 0.4);
+  transform: scale(0.2);
+}
+
+.domain-overlay.active .domain-shockwave {
+  animation: shockwave-bloom 2100ms ease-out forwards;
+}
+
+.domain-sigil {
+  opacity: 0;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(circle at center, transparent 0 18%, rgba(255, 255, 255, 0.82) 18.4%, transparent 19.8%, transparent 27%, rgba(140, 231, 255, 0.6) 27.6%, transparent 28.6%, transparent 38%, rgba(255, 255, 255, 0.4) 38.4%, transparent 39.4%),
+    linear-gradient(90deg, transparent 49.3%, rgba(255, 255, 255, 0.34) 50%, transparent 50.7%),
+    linear-gradient(transparent 49.3%, rgba(255, 255, 255, 0.34) 50%, transparent 50.7%);
+}
+
+.domain-overlay.active .domain-sigil {
+  animation: sigil-rise 2200ms ease-out forwards;
 }
 
 .domain-runes {
@@ -362,7 +471,7 @@ body::before {
   margin-top: 18px;
   padding: 14px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -372,6 +481,7 @@ body::before {
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(0, 0, 0, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 .clip-preview {
@@ -384,6 +494,8 @@ body::before {
 
 .status-card {
   padding: 24px;
+  position: sticky;
+  top: 20px;
 }
 
 .status-card h2,
@@ -479,6 +591,38 @@ body::before {
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.tuning-panel {
+  margin-top: 28px;
+  padding: 18px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tuning-panel h3 {
+  margin: 0 0 18px;
+  font-size: 1.08rem;
+}
+
+.tuning-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  color: var(--muted);
+}
+
+.tuning-row strong {
+  color: var(--text);
+}
+
+.tuning-slider {
+  width: 100%;
+  margin: 0 0 18px;
+  accent-color: var(--accent-strong);
+}
+
 .feedback-list {
   display: grid;
   gap: 10px;
@@ -505,9 +649,20 @@ body::before {
   color: #fff0cf;
 }
 
+.feedback-item.focus {
+  background: rgba(143, 239, 255, 0.14);
+  border-color: rgba(143, 239, 255, 0.28);
+  color: #e5fbff;
+  box-shadow: inset 0 0 0 1px rgba(143, 239, 255, 0.08);
+}
+
 .debug-text {
   min-height: 72px;
   margin: 24px 0 0;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   line-height: 1.6;
 }
 
@@ -561,6 +716,45 @@ body::before {
   100% {
     opacity: 0.1;
     transform: scale(1);
+  }
+}
+
+@keyframes rays-spin {
+  0% {
+    opacity: 0;
+    transform: scale(0.7) rotate(0deg);
+  }
+  18% {
+    opacity: 0.82;
+  }
+  100% {
+    opacity: 0.12;
+    transform: scale(1.28) rotate(22deg);
+  }
+}
+
+@keyframes shockwave-bloom {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.16);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes sigil-rise {
+  0% {
+    opacity: 0;
+    transform: scale(0.6) rotate(0deg);
+  }
+  24% {
+    opacity: 0.95;
+  }
+  100% {
+    opacity: 0.08;
+    transform: scale(1.22) rotate(-14deg);
   }
 }
 
@@ -654,6 +848,7 @@ body::before {
 
   .status-card {
     padding: 20px;
+    position: static;
   }
 
   .stage-frame {
