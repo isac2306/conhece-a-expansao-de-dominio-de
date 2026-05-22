@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Referencia aproximada do selo do Gojo</title>
+  <desc id="desc">Quadro em preto e branco inspirado na pose do Gojo, com o indicador e o medio cruzados perto do rosto para orientar o gesto.</desc>
+  <defs>
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="675" fill="#f7f7f4"/>
+
+  <g>
+    <rect x="0" y="0" width="560" height="675" fill="#050505"/>
+    <g fill="#ffffff" opacity="0.95">
+      <circle cx="72" cy="88" r="6"/>
+      <circle cx="128" cy="146" r="7"/>
+      <circle cx="188" cy="74" r="4"/>
+      <circle cx="228" cy="206" r="5"/>
+      <circle cx="308" cy="118" r="7"/>
+      <circle cx="354" cy="54" r="4"/>
+      <circle cx="402" cy="182" r="6"/>
+      <circle cx="480" cy="136" r="5"/>
+      <circle cx="88" cy="286" r="8"/>
+      <circle cx="164" cy="324" r="5"/>
+      <circle cx="246" cy="284" r="7"/>
+      <circle cx="312" cy="344" r="4"/>
+      <circle cx="414" cy="282" r="6"/>
+      <circle cx="500" cy="332" r="5"/>
+      <circle cx="116" cy="448" r="6"/>
+      <circle cx="198" cy="524" r="4"/>
+      <circle cx="286" cy="482" r="8"/>
+      <circle cx="372" cy="418" r="5"/>
+      <circle cx="462" cy="538" r="7"/>
+      <circle cx="530" cy="430" r="4"/>
+    </g>
+    <g fill="none" stroke="#ffffff" opacity="0.92">
+      <path d="M34 48c38 12 54 46 56 74c-22 8-46-4-62-22c-18-20-24-34-20-52c8-4 14-4 26 0Z"/>
+      <path d="M92 566c54-20 90-12 124 32c-42 22-90 22-126 4c-22-10-40-24-46-44c12-4 28 0 48 8Z"/>
+      <path d="M440 34c46 26 72 74 70 122c-26-4-54-18-72-42c-20-24-30-54-28-80c8-4 16-4 30 0Z"/>
+      <path d="M496 532c38 8 64 30 74 64c-42 10-90 0-114-22c-16-14-26-30-30-48c16-4 38 0 70 6Z"/>
+    </g>
+  </g>
+
+  <g transform="translate(494 8)">
+    <path
+      d="M202 112
+         c34-70 126-110 216-76
+         c24 8 48 24 62 48
+         c-42 4-78 18-110 50
+         c-26 28-50 44-94 50
+         c-30 4-62 0-90-12
+         c2-20 8-40 16-60Z"
+      fill="#ffffff"
+      stroke="#111111"
+      stroke-width="4"
+      stroke-linejoin="round"
+    />
+
+    <g fill="none" stroke="#111111" stroke-width="4" stroke-linecap="round">
+      <path d="M244 98c30-32 72-56 126-70"/>
+      <path d="M276 92c38-30 92-50 156-58"/>
+      <path d="M310 102c46-24 102-36 172-36"/>
+      <path d="M344 122c44-14 92-18 142-10"/>
+      <path d="M214 124c28-24 66-44 112-60"/>
+      <path d="M240 148c36-24 86-38 142-40"/>
+      <path d="M286 170c42-18 86-22 130-14"/>
+    </g>
+
+    <path
+      d="M270 198
+         c44-22 108-26 154-6
+         c26 12 48 34 58 62
+         c8 22 10 50 2 80
+         c-10 34-32 70-68 96
+         c-38 26-84 38-126 34
+         c-44-4-82-22-108-54
+         c-22-26-34-60-32-98
+         c2-30 14-60 38-82
+         c22-16 50-26 82-32Z"
+      fill="#ffffff"
+      stroke="#111111"
+      stroke-width="4"
+      stroke-linejoin="round"
+    />
+
+    <g fill="none" stroke="#111111" stroke-width="4" stroke-linecap="round">
+      <path d="M326 276c14-18 30-24 50-20"/>
+      <path d="M458 272c14-14 30-20 50-18"/>
+      <path d="M350 294c20 0 38 6 52 18"/>
+      <path d="M454 292c18 0 34 6 46 16"/>
+      <path d="M404 378c18 10 38 12 60 4"/>
+      <path d="M438 404c14 6 28 8 44 4"/>
+      <path d="M420 422c20 8 42 8 62 0"/>
+    </g>
+
+    <path
+      d="M228 420
+         c18-54 48-94 92-128
+         c22-16 44-26 68-34
+         c-10 24-16 48-16 74
+         c0 26 4 54 12 86
+         c-18 18-42 30-72 38
+         c-34 8-62 6-84-8Z"
+      fill="#ffffff"
+      stroke="#111111"
+      stroke-width="4"
+      stroke-linejoin="round"
+    />
+
+    <g fill="#ffffff" stroke="#111111" stroke-width="4" stroke-linejoin="round">
+      <path d="M284 370c-18 12-34 40-34 72c0 28 12 48 30 58c22 10 48 0 62-22c12-20 16-50 8-80c-10-34-34-46-66-28Z"/>
+      <path d="M294 348c-8-54 14-98 50-100c28-2 42 28 42 70c0 26-6 52-18 72c-10 18-26 34-44 34c-20 0-28-34-30-76Z"/>
+      <path d="M356 332c18-44 50-72 82-68c28 4 36 36 24 78c-8 24-20 48-36 66c-18 20-40 32-58 24c-20-10-24-48-12-100Z"/>
+      <path d="M250 438c-26-2-50 12-62 42c-12 30-6 62 14 76c22 16 54 8 74-14c14-16 26-44 24-74c-2-18-18-28-50-30Z"/>
+      <path d="M168 404c-28 8-56 34-70 66c-12 30-8 60 8 76c20 20 52 18 78 0c18-12 34-36 42-66c6-20 4-36-8-52c-12-20-24-28-50-24Z"/>
+    </g>
+
+    <g fill="none" stroke="#111111" stroke-width="6" stroke-linecap="round" filter="url(#softGlow)">
+      <path d="M292 338l88 126"/>
+      <path d="M378 328l-74 136"/>
+    </g>
+
+    <g fill="none" stroke="#8fefff" stroke-width="10" stroke-linecap="round" opacity="0.7">
+      <path d="M300 340l80 112"/>
+      <path d="M376 334l-70 124"/>
+    </g>
+
+    <path
+      d="M488 436
+         c30-18 62-24 92-18
+         c34 8 60 34 74 74
+         c-28 16-58 24-90 22
+         c-38-2-70-20-92-50
+         c-12-18-18-34-18-48
+         c10 2 22 8 34 20Z"
+      fill="#ffffff"
+      stroke="#111111"
+      stroke-width="4"
+      stroke-linejoin="round"
+    />
+  </g>
+
+  <g transform="translate(62 584)">
+    <rect width="1076" height="52" rx="26" fill="#ffffff" opacity="0.94"/>
+    <text x="538" y="34" text-anchor="middle" font-family="Segoe UI, Trebuchet MS, sans-serif" font-size="24" font-weight="700" fill="#111111">
+      Cruce indicador e medio perto do rosto e dobre os dedos de baixo.
+    </text>
+  </g>
+</svg>

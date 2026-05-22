@@ -14,18 +14,13 @@
 <body>
   <div class="app-shell">
     <header class="hero">
-      <p class="eyebrow">Camera + mao + dominio</p>
       <h1>Selo do Gojo</h1>
-      <p class="intro">
-        Monte o sinal com indicador e medio cruzados. O app rastreia a sua mao,
-        calibra o seu jeito de fazer o gesto e troca o fundo atras de voce quando
-        o Unlimited Void abre.
-      </p>
       <div class="hero-actions">
         <button id="startButton" class="start-button">Liberar camera</button>
+        <button id="referenceButton" class="ghost-button">Ver referencia</button>
         <button id="installButton" class="secondary-button" hidden>Instalar app</button>
       </div>
-      <p id="permissionHint" class="hint">
+      <p id="permissionHint" class="hint hidden">
         Camera e PWA funcionam melhor em contexto seguro: `localhost` ou HTTPS.
       </p>
     </header>
@@ -45,6 +40,7 @@
             <div id="stageGuideLabel" class="stage-guide-label">Encaixe sua mao aqui</div>
           </div>
           <div class="scanline-layer"></div>
+          <p id="stageStatus" class="stage-status">Toque em liberar camera para comecar.</p>
 
           <div id="domainOverlay" class="domain-overlay" aria-hidden="true">
             <div class="domain-flash"></div>
@@ -67,14 +63,22 @@
           </div>
         </div>
 
-        <div class="viewer-tools">
+        <section id="referencePanel" class="reference-panel hidden">
+          <img
+            class="reference-image"
+            src="guides/gojo-manga-reference.svg"
+            alt="Referencia aproximada do selo do Gojo, com indicador e medio cruzados perto do rosto"
+          >
+        </section>
+
+        <div class="viewer-tools hidden">
           <button id="calibrateButton" class="secondary-button" disabled>Calibrar gesto</button>
           <button id="trainButton" class="secondary-button" disabled>Treino guiado</button>
           <button id="resetCalibrationButton" class="ghost-button" disabled>Limpar calibracao</button>
           <a id="downloadClip" class="ghost-link hidden" download="unlimited-void.webm">Baixar ultimo clip</a>
         </div>
 
-        <section class="gesture-guide-card">
+        <section class="gesture-guide-card hidden">
           <img
             class="gesture-guide-image"
             src="guides/gojo-gesture-guide.svg"
@@ -85,7 +89,7 @@
         <video id="clipPreview" class="clip-preview hidden" controls muted loop playsinline></video>
       </section>
 
-      <aside class="status-card">
+      <aside class="status-card hidden">
         <h2>Leitura ao vivo</h2>
 
         <div class="status-list">

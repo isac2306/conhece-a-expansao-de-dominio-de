@@ -42,15 +42,19 @@ body::before {
 
 .app-shell {
   position: relative;
-  width: min(1180px, calc(100% - 32px));
+  width: min(980px, calc(100% - 24px));
   margin: 0 auto;
-  padding: 32px 0 56px;
+  padding: 18px 0 24px;
 }
 
 .hero {
   position: relative;
-  margin-bottom: 28px;
-  padding: 8px 4px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 4px 2px 8px;
 }
 
 .hero::after {
@@ -61,28 +65,12 @@ body::before {
   background: linear-gradient(90deg, transparent, rgba(143, 239, 255, 0.26), transparent);
 }
 
-.eyebrow {
-  margin: 0 0 12px;
-  color: var(--accent);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-size: 0.72rem;
-}
-
 .hero h1 {
   margin: 0;
-  font-size: clamp(2.4rem, 4vw, 4.5rem);
-  line-height: 0.96;
-  letter-spacing: -0.04em;
+  font-size: clamp(1.7rem, 3vw, 2.8rem);
+  line-height: 1;
+  letter-spacing: -0.03em;
   text-shadow: 0 10px 40px rgba(18, 215, 255, 0.18);
-}
-
-.intro {
-  width: min(760px, 100%);
-  margin: 16px 0 20px;
-  color: var(--muted);
-  font-size: 1.02rem;
-  line-height: 1.65;
 }
 
 .hero-actions,
@@ -154,10 +142,7 @@ body::before {
 }
 
 .layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.68fr) minmax(300px, 0.88fr);
-  gap: 24px;
-  align-items: start;
+  display: block;
 }
 
 .viewer-card,
@@ -170,7 +155,7 @@ body::before {
 }
 
 .viewer-card {
-  padding: 18px;
+  padding: 12px;
 }
 
 .stage-frame {
@@ -248,7 +233,7 @@ body::before {
   z-index: 1;
   display: grid;
   place-items: center;
-  opacity: 0.78;
+  opacity: 0.58;
   transition: opacity 180ms ease, transform 180ms ease;
 }
 
@@ -257,7 +242,7 @@ body::before {
 }
 
 .stage-guide.ready {
-  opacity: 0.14;
+  opacity: 0.08;
 }
 
 .stage-guide.hidden {
@@ -265,25 +250,48 @@ body::before {
 }
 
 .stage-guide-image {
-  width: min(42%, 320px);
+  width: min(44%, 270px);
   max-width: 46vw;
-  filter: drop-shadow(0 0 24px rgba(143, 239, 255, 0.34));
+  filter: grayscale(1) brightness(1.18) drop-shadow(0 0 18px rgba(143, 239, 255, 0.16));
   transform: translateY(4%);
 }
 
 .stage-guide-label {
+  display: none;
+}
+
+.stage-status {
   position: absolute;
-  left: 50%;
-  bottom: 10%;
-  transform: translateX(-50%);
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: rgba(5, 17, 27, 0.54);
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 3;
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(3, 11, 18, 0.74);
   border: 1px solid rgba(143, 239, 255, 0.18);
-  color: rgba(232, 248, 255, 0.88);
-  font-size: 0.9rem;
-  letter-spacing: 0.02em;
+  color: #effaff;
+  font-size: 0.94rem;
+  line-height: 1.45;
+  text-align: center;
   backdrop-filter: blur(10px);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.26);
+}
+
+.reference-panel {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.reference-image {
+  display: block;
+  width: 100%;
+  border-radius: 14px;
+  background: #ffffff;
 }
 
 .scanline-layer {
@@ -672,6 +680,15 @@ body::before {
   line-height: 1.5;
 }
 
+.status-card,
+.gesture-guide-card,
+.viewer-tools,
+.intro,
+.eyebrow,
+.clip-preview {
+  display: none !important;
+}
+
 .hidden {
   display: none !important;
 }
@@ -829,12 +846,8 @@ body::before {
 
 @media (max-width: 920px) {
   .app-shell {
-    width: min(100% - 20px, 1180px);
-    padding-top: 22px;
-  }
-
-  .layout {
-    grid-template-columns: 1fr;
+    width: min(100% - 14px, 1180px);
+    padding-top: 12px;
   }
 
   .viewer-card,
@@ -843,15 +856,40 @@ body::before {
   }
 
   .viewer-card {
-    padding: 12px;
-  }
-
-  .status-card {
-    padding: 20px;
-    position: static;
+    padding: 10px;
   }
 
   .stage-frame {
     border-radius: 18px;
+  }
+
+  .hero {
+    flex-direction: column;
+    align-items: stretch;
+    margin-bottom: 12px;
+  }
+
+  .hero h1 {
+    font-size: 1.9rem;
+  }
+
+  .hero-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .stage-guide-image {
+    width: min(52%, 240px);
+  }
+
+  .stage-status {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    padding: 10px 12px;
+    font-size: 0.88rem;
+  }
+
+  .stage-frame {
+    aspect-ratio: 10 / 14;
   }
 }
