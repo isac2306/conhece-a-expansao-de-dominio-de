@@ -22,6 +22,7 @@ Esta base foi pensada para:
 - testar a ativacao
 - integrar depois um provider real de landmarks de mao
 - integrar depois uma mascara real de segmentacao de pessoa
+- gerar uma cena demo automaticamente no editor
 
 ## Estrutura
 
@@ -30,9 +31,14 @@ Esta base foi pensada para:
 - `Assets/Scripts/Runtime/Rendering`
 - `Assets/Scripts/Runtime/Vision`
 - `Assets/Shaders`
+- `android-plugin`
 - `docs/GoogleAiEdgeAndroidBridge.md`
 
 ## Cena minima
+
+Voce pode montar isso manualmente ou usar:
+
+- `Tools > Unlimited Void > Create Demo Scene`
 
 1. Crie um `Main Camera`.
 2. Crie um `Quad` grande atras da camera chamado `BackdropQuad`.
@@ -47,6 +53,8 @@ Esta base foi pensada para:
 2. Aplique esse material no `BackdropQuad`.
 3. Crie um material com shader `UnlimitedVoid/Foreground Composite`.
 4. Aplique esse material no `ForegroundQuad`.
+
+Se usar o criador de cena, esses materiais sao gerados automaticamente em `Assets/Materials`.
 
 ## Componentes
 
@@ -72,7 +80,7 @@ No `DebugProviders`:
 - `DebugHoldGestureProvider`
 - `DebugEllipseMaskProvider`
 
-## Ligações no Inspector
+## Ligacoes no Inspector
 
 `DomainActivationController`
 
@@ -108,6 +116,7 @@ Para trocar o debug por visao computacional real:
 Para um caminho Android com Google AI Edge, veja:
 
 - `docs/GoogleAiEdgeAndroidBridge.md`
+- `android-plugin/README.md`
 
 ## Observacao
 

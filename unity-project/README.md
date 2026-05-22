@@ -7,6 +7,7 @@ Este e um scaffold leve de projeto Unity para abrir uma estrutura de projeto de 
 - traz `Packages/manifest.json`
 - traz `ProjectSettings/ProjectVersion.txt`
 - traz um script para sincronizar os assets de `unity-base`
+- traz um espaco claro para o template do plugin Android
 
 ## Como usar
 
@@ -18,6 +19,8 @@ Este e um scaffold leve de projeto Unity para abrir uma estrutura de projeto de 
 ```
 
 3. Depois abra o projeto no Unity.
+4. No editor, use `Tools > Unlimited Void > Create Demo Scene`.
+5. Se quiser seguir pela integracao Android real, abra tambem `AndroidPluginTemplate`.
 
 ## Por que existe essa etapa
 
@@ -31,3 +34,4 @@ Assim voce ja tem:
 - codigo pronto
 - estrutura de projeto
 - e uma forma clara de sincronizar tudo
+- um template inicial do plugin Android para o bridge

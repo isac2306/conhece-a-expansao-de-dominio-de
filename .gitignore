@@ -4,3 +4,13 @@ __pycache__/
 *.webm
 Thumbs.db
 .DS_Store
+*.csproj
+*.sln
+unity-project/Library/
+unity-project/Logs/
+unity-project/Temp/
+unity-project/UserSettings/
+unity-project/obj/
+unity-project/AndroidPluginTemplate/.gradle/
+unity-project/AndroidPluginTemplate/build/
+unity-project/AndroidPluginTemplate/local.properties

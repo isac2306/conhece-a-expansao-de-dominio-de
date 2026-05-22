@@ -9,8 +9,13 @@ Esta base Unity ja deixa as interfaces prontas para integrar dois tasks do Googl
 
 - `Assets/Scripts/Runtime/Vision/MediaPipeAndroidHandLandmarkProvider.cs`
 - `Assets/Scripts/Runtime/Vision/MediaPipeAndroidPersonMaskProvider.cs`
+- `android-plugin/README.md`
+- `android-plugin/src/main/java/com/isac/unlimitedvoid/bridge/HandLandmarkerBridge.java`
+- `android-plugin/src/main/java/com/isac/unlimitedvoid/bridge/ImageSegmenterBridge.java`
 
 Eles sao stubs de bridge para um plugin Android em Java/Kotlin.
+
+Depois de rodar `unity-project\sync-unity-base.ps1`, esse template tambem aparece em `unity-project\AndroidPluginTemplate`.
 
 ## Arquitetura sugerida
 
@@ -63,6 +68,10 @@ Formato esperado de `consumeLatestMask()`:
 No modulo Android, a integracao recomendada e usar o artefato:
 
 - `com.google.mediapipe:tasks-vision`
+
+Ao finalizar o build do plugin, copie o `.aar` gerado para:
+
+- `unity-project\Assets\Plugins\Android`
 
 ## Fontes oficiais
 
