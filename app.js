@@ -4,11 +4,13 @@ const CHAVE_AJUSTES = "unlimited-void-settings-v1";
 const CLIPE_ANTES_MS = 2000;
 const CLIPE_DEPOIS_MS = 4200;
 const INTERVALO_GRAVADOR_MS = 250;
+const INTERVALO_SEGMENTACAO_MS = 180;
 const META_AMOSTRAS_CALIBRACAO = 24;
 const JANELA_SUAVIZACAO_GESTO = 10;
 
 const referencias = {
   botaoIniciar: document.getElementById("startButton"),
+  botaoReferencia: document.getElementById("referenceButton"),
   botaoInstalar: document.getElementById("installButton"),
   botaoCalibrar: document.getElementById("calibrateButton"),
   botaoTreino: document.getElementById("trainButton"),
@@ -19,6 +21,7 @@ const referencias = {
   quadroPalco: document.getElementById("stageFrame"),
   guiaPalco: document.getElementById("stageGuide"),
   rotuloGuiaPalco: document.getElementById("stageGuideLabel"),
+  painelReferencia: document.getElementById("referencePanel"),
   sobreposicaoDominio: document.getElementById("domainOverlay"),
   telaComposta: document.getElementById("compositeCanvas"),
   telaPessoa: document.getElementById("personCanvas"),
@@ -33,6 +36,7 @@ const referencias = {
   medidorGesto: document.getElementById("gestureMeter"),
   medidorEstabilidade: document.getElementById("stabilityMeter"),
   medidorMovimento: document.getElementById("motionMeter"),
+  textoDebugPalco: document.getElementById("stageStatus"),
   textoDebug: document.getElementById("debugText"),
   textoCalibracao: document.getElementById("calibrationText"),
   textoPwa: document.getElementById("pwaText"),
@@ -73,6 +77,8 @@ const estado = {
     suportado: typeof window.SelfieSegmentation !== "undefined",
     pronta: false,
     ultimaAtualizacaoEm: 0,
+    ultimaSolicitacaoEm: 0,
+    requisicaoEmAndamento: false,
   },
   modoCalibracao: false,
   modoTreinoGuiado: false,
@@ -157,7 +163,13 @@ function definirSelo(element, text, tone) {
 }
 
 function definirDebug(message) {
-  referencias.textoDebug.textContent = message;
+  if (referencias.textoDebug) {
+    referencias.textoDebug.textContent = message;
+  }
+
+  if (referencias.textoDebugPalco) {
+    referencias.textoDebugPalco.textContent = message;
+  }
 }
 
 function definirMedidor(element, value) {
@@ -268,19 +280,19 @@ function progressoSustentacao() {
 }
 
 function obterLimiarGestoBruto() {
-  return interpolar(0.68, 0.82, progressoSensibilidade());
+  return interpolar(0.61, 0.78, progressoSensibilidade());
 }
 
 function obterLimiarGestoSuavizado() {
-  return interpolar(0.73, 0.87, progressoSensibilidade());
+  return interpolar(0.66, 0.82, progressoSensibilidade());
 }
 
 function obterLimiarRearmeGesto() {
-  return interpolar(0.26, 0.38, progressoSensibilidade());
+  return interpolar(0.22, 0.34, progressoSensibilidade());
 }
 
 function obterQuadrosNecessariosAtivacao() {
-  return Math.round(interpolar(7, 16, progressoSustentacao()));
+  return Math.round(interpolar(5, 12, progressoSustentacao()));
 }
 
 function descreverSensibilidade(valor) {
@@ -321,6 +333,17 @@ function atualizarPainelAjustes() {
   referencias.textoAjustes.textContent =
     `Detector em ${descreverSensibilidade(estado.ajustes.sensibilidade).toLowerCase()} ` +
     `com sustentacao ${descreverSustentacao(estado.ajustes.sustentacao).toLowerCase()}.`;
+}
+
+function alternarReferencia() {
+  if (!referencias.painelReferencia || !referencias.botaoReferencia) {
+    return;
+  }
+
+  const vaiMostrar = referencias.painelReferencia.classList.contains("hidden");
+  referencias.painelReferencia.classList.toggle("hidden", !vaiMostrar);
+  referencias.botaoReferencia.textContent = vaiMostrar ? "Ocultar referencia" : "Ver referencia";
+  referencias.botaoReferencia.setAttribute("aria-pressed", vaiMostrar ? "true" : "false");
 }
 
 function obterEtapasTreino(result) {
@@ -526,7 +549,7 @@ function pontuarGesto(metrics) {
     Math.min(-0.05, profile.pinkyCurl - 0.12),
     Math.max(0.02, profile.pinkyCurl + 0.08)
   );
-  const framingScore = normalizarPontuacao(metrics.handScale, 0.13, 0.28);
+  const framingScore = normalizarPontuacao(metrics.handScale, 0.095, 0.25);
   const balanceScore = pontuacaoProximidade(metrics.indexExtension, metrics.middleExtension, 0.18);
   const overall =
     indexScore * 0.17 +
@@ -1468,9 +1491,9 @@ async function iniciarRastreamentoMao() {
 
   estado.hands.setOptions({
     maxNumHands: 1,
-    modelComplexity: 1,
-    minDetectionConfidence: 0.76,
-    minTrackingConfidence: 0.7,
+    modelComplexity: 0,
+    minDetectionConfidence: 0.58,
+    minTrackingConfidence: 0.55,
   });
 
   estado.hands.onResults((results) => {
@@ -1525,8 +1548,8 @@ async function iniciarRastreamentoMao() {
 
     if (
       gestureScore > limiarBruto &&
-      gestureScoreSuavizado > limiarBruto - 0.03 &&
-      result.parts.cross > 0.6
+      gestureScoreSuavizado > limiarBruto - 0.05 &&
+      result.parts.cross > 0.55
     ) {
       estado.quadrosEstaveis += 1;
     } else {
@@ -1537,10 +1560,10 @@ async function iniciarRastreamentoMao() {
     const gestureReady =
       gestureScore > limiarBruto &&
       gestureScoreSuavizado > limiarSuavizado &&
-      stabilityScore > 0.72 &&
-      result.parts.cross > 0.72 &&
-      result.parts.close > 0.68 &&
-      result.parts.framing > 0.55;
+      stabilityScore > 0.62 &&
+      result.parts.cross > 0.66 &&
+      result.parts.close > 0.6 &&
+      result.parts.framing > 0.42;
 
     definirMedidor(referencias.medidorGesto, gestureScoreSuavizado);
     definirMedidor(referencias.medidorEstabilidade, stabilityScore);
@@ -1591,14 +1614,29 @@ async function iniciarRastreamentoMao() {
 
   estado.fluxoCamera = new Camera(referencias.camera, {
     onFrame: async () => {
+      const agora = Date.now();
       const tasks = [estado.hands.send({ image: referencias.camera })];
-      if (estado.segmentacao.modelo) {
-        tasks.push(estado.segmentacao.modelo.send({ image: referencias.camera }));
+      const podeAtualizarSegmentacao =
+        !!estado.segmentacao.modelo &&
+        !estado.segmentacao.requisicaoEmAndamento &&
+        agora - estado.segmentacao.ultimaSolicitacaoEm >= INTERVALO_SEGMENTACAO_MS;
+
+      if (podeAtualizarSegmentacao) {
+        estado.segmentacao.requisicaoEmAndamento = true;
+        estado.segmentacao.ultimaSolicitacaoEm = agora;
+        tasks.push(
+          estado.segmentacao.modelo
+            .send({ image: referencias.camera })
+            .catch(() => {})
+            .finally(() => {
+              estado.segmentacao.requisicaoEmAndamento = false;
+            })
+        );
       }
       await Promise.all(tasks);
     },
-    width: 1280,
-    height: 720,
+    width: 960,
+    height: 540,
   });
 
   await estado.fluxoCamera.start();
@@ -1772,6 +1810,9 @@ function iniciarInterface() {
 }
 
 referencias.botaoIniciar.addEventListener("click", iniciarExperiencia);
+if (referencias.botaoReferencia) {
+  referencias.botaoReferencia.addEventListener("click", alternarReferencia);
+}
 referencias.botaoInstalar.addEventListener("click", instalarAplicativo);
 referencias.botaoCalibrar.addEventListener("click", iniciarCalibracao);
 referencias.botaoTreino.addEventListener("click", iniciarTreinoGuiado);
