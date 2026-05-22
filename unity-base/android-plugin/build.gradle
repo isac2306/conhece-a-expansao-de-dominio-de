@@ -1,0 +1,30 @@
+plugins {
+    id 'com.android.library' version '8.2.2'
+}
+
+android {
+    namespace 'com.isac.unlimitedvoid.bridge'
+    compileSdk 34
+
+    defaultConfig {
+        minSdk 24
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    // Adicione aqui a versao atual de com.google.mediapipe:tasks-vision
+    // implementation 'com.google.mediapipe:tasks-vision:<VERSAO_ATUAL>'
+}
