@@ -217,11 +217,11 @@ body::before {
   pointer-events: none;
 }
 
-.stage-frame.render-live #camera {
+.stage-frame.domain-live #camera {
   opacity: 0;
 }
 
-.stage-frame.render-live #compositeCanvas {
+.stage-frame.domain-live #compositeCanvas {
   opacity: 1;
 }
 

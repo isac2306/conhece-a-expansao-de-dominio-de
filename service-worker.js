@@ -1,4 +1,4 @@
-const CACHE_NAME = "unlimited-void-trigger-v5";
+const CACHE_NAME = "unlimited-void-trigger-v6";
 
 const SAME_ORIGIN_ASSETS = [
   "./",

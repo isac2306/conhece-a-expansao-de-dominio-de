@@ -1486,8 +1486,8 @@ async function iniciarRastreamentoMao() {
   estado.hands.setOptions({
     maxNumHands: 1,
     modelComplexity: 0,
-    minDetectionConfidence: 0.58,
-    minTrackingConfidence: 0.55,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.45,
   });
 
   estado.hands.onResults((results) => {
@@ -1615,7 +1615,11 @@ async function iniciarRastreamentoMao() {
     onFrame: async () => {
       const agora = Date.now();
       const tasks = [estado.hands.send({ image: referencias.camera })];
+      const segmentacaoNecessaria =
+        !!estado.efeitoIniciadoEm &&
+        agora - estado.efeitoIniciadoEm <= DURACAO_EFEITO_MS + 450;
       const podeAtualizarSegmentacao =
+        segmentacaoNecessaria &&
         !!estado.segmentacao.modelo &&
         !estado.segmentacao.requisicaoEmAndamento &&
         agora - estado.segmentacao.ultimaSolicitacaoEm >= INTERVALO_SEGMENTACAO_MS;
@@ -1634,14 +1638,13 @@ async function iniciarRastreamentoMao() {
       }
       await Promise.all(tasks);
     },
-    width: 960,
-    height: 540,
+    width: 848,
+    height: 480,
   });
 
   await estado.fluxoCamera.start();
   estado.cameraAtiva = true;
   redimensionarTelas();
-  referencias.quadroPalco.classList.add("render-live");
   iniciarLoopRenderizacao();
   iniciarGravadorComposto();
   definirSelo(referencias.statusCamera, "Ativa", "ok");
