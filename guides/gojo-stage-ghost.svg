@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-labelledby="title desc">
+  <title id="title">Guia fantasma do selo do Gojo</title>
+  <desc id="desc">Mao estilizada com indicador e medio cruzados para servir como guia de alinhamento sobre a camera.</desc>
+  <defs>
+    <linearGradient id="palma" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#e5f9ff" stop-opacity="0.68"/>
+      <stop offset="100%" stop-color="#a6e9ff" stop-opacity="0.42"/>
+    </linearGradient>
+    <linearGradient id="dedoA" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#ecfbff" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#7bdfff" stop-opacity="0.5"/>
+    </linearGradient>
+    <linearGradient id="dedoB" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#fff4cf" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#ffd87a" stop-opacity="0.5"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="12" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <ellipse cx="300" cy="520" rx="150" ry="34" fill="rgba(0,0,0,0.24)"/>
+
+  <path d="M218 425
+           C194 377 192 330 206 292
+           C222 246 252 216 288 206
+           C334 194 388 214 424 258
+           C452 292 466 340 468 382
+           C470 418 460 448 436 470
+           C408 496 366 504 314 502
+           C268 500 238 474 218 425 Z"
+        fill="url(#palma)"/>
+
+  <rect x="255" y="60" width="62" height="282" rx="31" transform="rotate(-21 286 201)" fill="url(#dedoA)" filter="url(#glow)"/>
+  <rect x="334" y="66" width="62" height="282" rx="31" transform="rotate(19 365 207)" fill="url(#dedoB)" filter="url(#glow)"/>
+
+  <rect x="280" y="256" width="54" height="168" rx="28" transform="rotate(17 307 340)" fill="#c7ecf8" fill-opacity="0.48"/>
+  <rect x="346" y="262" width="50" height="142" rx="24" transform="rotate(28 371 333)" fill="#b6e4f5" fill-opacity="0.42"/>
+  <rect x="188" y="258" width="58" height="154" rx="26" transform="rotate(-36 217 335)" fill="#d7f3fd" fill-opacity="0.48"/>
+
+  <circle cx="300" cy="118" r="16" fill="#ffffff" fill-opacity="0.8"/>
+  <circle cx="365" cy="126" r="16" fill="#fff7da" fill-opacity="0.82"/>
+
+  <path d="M246 126 C290 88 340 88 384 126" fill="none" stroke="rgba(180,236,255,0.55)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M240 142 C292 102 350 102 390 142" fill="none" stroke="rgba(255,255,255,0.36)" stroke-width="4" stroke-linecap="round"/>
+
+  <circle cx="322" cy="324" r="116" fill="none" stroke="rgba(143,239,255,0.14)" stroke-width="2" stroke-dasharray="10 12"/>
+</svg>
