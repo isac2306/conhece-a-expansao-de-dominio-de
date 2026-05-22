@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
@@ -14,13 +14,18 @@
 <body>
   <div class="app-shell">
     <header class="hero">
+      <p class="eyebrow">Camera + mao + dominio</p>
       <h1>Selo do Gojo</h1>
+      <p class="intro">
+        Faça o selo com indicador e medio cruzados. Esta versao foca no rastreio da mao:
+        menos peso visual, menos processamento paralelo e ativacao so pelo gesto.
+      </p>
       <div class="hero-actions">
         <button id="startButton" class="start-button">Liberar camera</button>
         <button id="referenceButton" class="ghost-button">Ver referencia</button>
         <button id="installButton" class="secondary-button" hidden>Instalar app</button>
       </div>
-      <p id="permissionHint" class="hint hidden">
+      <p id="permissionHint" class="hint">
         Camera e PWA funcionam melhor em contexto seguro: `localhost` ou HTTPS.
       </p>
     </header>
@@ -29,18 +34,13 @@
       <section class="viewer-card">
         <div id="stageFrame" class="stage-frame">
           <video id="camera" playsinline muted></video>
-          <canvas id="compositeCanvas"></canvas>
           <canvas id="overlay"></canvas>
-          <p id="stageStatus" class="stage-status idle">Aguardando camera</p>
 
           <div id="domainOverlay" class="domain-overlay" aria-hidden="true">
             <div class="domain-flash"></div>
             <div class="domain-vortex"></div>
             <div class="domain-stars"></div>
             <div class="domain-grid"></div>
-            <div class="domain-rays"></div>
-            <div class="domain-shockwave"></div>
-            <div class="domain-sigil"></div>
             <div class="domain-runes">
               <span>MU RYO</span>
               <span>KU SHO</span>
@@ -54,6 +54,12 @@
           </div>
         </div>
 
+        <div class="viewer-tools">
+          <button id="calibrateButton" class="secondary-button" disabled>Calibrar gesto</button>
+          <button id="resetCalibrationButton" class="ghost-button" disabled>Limpar calibracao</button>
+          <a id="downloadClip" class="ghost-link hidden" download="unlimited-void.webm">Baixar ultimo clip</a>
+        </div>
+
         <section id="referencePanel" class="reference-panel hidden">
           <img
             class="reference-image"
@@ -62,26 +68,11 @@
           >
         </section>
 
-        <div class="viewer-tools hidden">
-          <button id="calibrateButton" class="secondary-button" disabled>Calibrar gesto</button>
-          <button id="trainButton" class="secondary-button" disabled>Treino guiado</button>
-          <button id="resetCalibrationButton" class="ghost-button" disabled>Limpar calibracao</button>
-          <a id="downloadClip" class="ghost-link hidden" download="unlimited-void.webm">Baixar ultimo clip</a>
-        </div>
-
-        <section class="gesture-guide-card hidden">
-          <img
-            class="gesture-guide-image"
-            src="guides/gojo-gesture-guide.svg"
-            alt="Guia visual do gesto: indicador e medio cruzados, pontas proximas e dedos inferiores dobrados"
-          >
-        </section>
-
         <video id="clipPreview" class="clip-preview hidden" controls muted loop playsinline></video>
       </section>
 
-      <aside class="status-card hidden">
-        <h2>Leitura ao vivo</h2>
+      <aside class="status-card">
+        <h2>Leitura em tempo real</h2>
 
         <div class="status-list">
           <div class="status-row">
@@ -97,8 +88,8 @@
             <strong id="gestureStatus" class="status-pill idle">Nao detectado</strong>
           </div>
           <div class="status-row">
-            <span>Quadro</span>
-            <strong id="motionStatus" class="status-pill idle">Aguardando</strong>
+            <span>Leitura</span>
+            <strong id="motionStatus" class="status-pill idle">Modo gesto</strong>
           </div>
         </div>
 
@@ -110,7 +101,7 @@
         </div>
 
         <div class="meter-block">
-          <span>Estabilidade do selo</span>
+          <span>Estabilidade</span>
           <div class="meter-track">
             <div id="stabilityMeter" class="meter-fill accent"></div>
           </div>
@@ -123,42 +114,8 @@
           </div>
         </div>
 
-        <section class="tuning-panel">
-          <h3>Ajuste fino</h3>
-
-          <label class="tuning-row" for="sensitivityRange">
-            <span>Sensibilidade</span>
-            <strong id="sensitivityValue">Media</strong>
-          </label>
-          <input
-            id="sensitivityRange"
-            class="tuning-slider"
-            type="range"
-            min="0"
-            max="100"
-            value="48"
-          >
-
-          <label class="tuning-row" for="holdRange">
-            <span>Tempo do selo</span>
-            <strong id="holdValue">Medio</strong>
-          </label>
-          <input
-            id="holdRange"
-            class="tuning-slider"
-            type="range"
-            min="0"
-            max="100"
-            value="42"
-          >
-
-          <p id="tuningText" class="subtle-text">
-            Ajuste o detector para o seu jeito de fazer o gesto.
-          </p>
-        </section>
-
         <section class="feedback-panel">
-          <h3>Checklist do selo</h3>
+          <h3>Checklist do gesto</h3>
           <div class="feedback-list">
             <div id="feedbackFrame" class="feedback-item">Coloque a mao inteira no quadro</div>
             <div id="feedbackExtend" class="feedback-item">Estique indicador e medio</div>
@@ -170,22 +127,21 @@
         </section>
 
         <p id="debugText" class="debug-text">
-          Toque em liberar camera para comecar.
+          Toque no botao acima para iniciar.
         </p>
         <p id="calibrationText" class="subtle-text">Sem calibracao personalizada ainda.</p>
-        <p id="pwaText" class="subtle-text">Versao web principal.</p>
-        <p id="recordingText" class="subtle-text">Gravador aguardando.</p>
+        <p id="pwaText" class="subtle-text">Modo web padrao.</p>
+        <p id="recordingText" class="subtle-text">Clip recorder aguardando.</p>
       </aside>
     </main>
   </div>
 
-  <canvas id="personCanvas" hidden></canvas>
-  <canvas id="segmentationCanvas" hidden></canvas>
+  <canvas id="compositeCanvas" hidden></canvas>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
+
