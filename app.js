@@ -36,7 +36,7 @@ const referencias = {
   medidorGesto: document.getElementById("gestureMeter"),
   medidorEstabilidade: document.getElementById("stabilityMeter"),
   medidorMovimento: document.getElementById("motionMeter"),
-  textoDebugPalco: document.getElementById("stageStatus"),
+  statusPalco: document.getElementById("stageStatus"),
   textoDebug: document.getElementById("debugText"),
   textoCalibracao: document.getElementById("calibrationText"),
   textoPwa: document.getElementById("pwaText"),
@@ -166,10 +166,15 @@ function definirDebug(message) {
   if (referencias.textoDebug) {
     referencias.textoDebug.textContent = message;
   }
+}
 
-  if (referencias.textoDebugPalco) {
-    referencias.textoDebugPalco.textContent = message;
+function definirStatusPalco(texto, tom = "idle") {
+  if (!referencias.statusPalco) {
+    return;
   }
+
+  referencias.statusPalco.textContent = texto;
+  referencias.statusPalco.className = `stage-status ${tom}`;
 }
 
 function definirMedidor(element, value) {
@@ -736,8 +741,9 @@ function desenharSobreposicaoMao(landmarks, gestureScore) {
 
   const context = referencias.overlay.getContext("2d");
   const limiarBruto = obterLimiarGestoBruto();
-  const pulse = 0.5 + Math.sin(performance.now() * 0.01) * 0.5;
-  const center = {
+  const gestoForte = gestureScore > limiarBruto;
+  const pulso = 0.5 + Math.sin(performance.now() * 0.01) * 0.5;
+  const centroPalma = {
     x: estado.ultimasMetricas.centerX * referencias.overlay.width,
     y: estado.ultimasMetricas.centerY * referencias.overlay.height,
   };
@@ -752,56 +758,42 @@ function desenharSobreposicaoMao(landmarks, gestureScore) {
 
   context.save();
   context.clearRect(0, 0, referencias.overlay.width, referencias.overlay.height);
-  context.strokeStyle = "rgba(143, 239, 255, 0.2)";
-  context.setLineDash([10, 12]);
-  context.lineWidth = 2;
-  context.beginPath();
-  context.ellipse(
-    referencias.overlay.width * 0.5,
-    referencias.overlay.height * 0.54,
-    referencias.overlay.width * 0.16,
-    referencias.overlay.height * 0.22,
-    0,
-    0,
-    Math.PI * 2
-  );
-  context.stroke();
-  context.setLineDash([]);
-
-  context.shadowColor = gestureScore > limiarBruto ? "rgba(255, 216, 128, 0.45)" : "rgba(18, 215, 255, 0.28)";
-  context.shadowBlur = gestureScore > limiarBruto ? 18 : 10;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.shadowColor = gestoForte ? "rgba(255, 216, 128, 0.32)" : "rgba(18, 215, 255, 0.18)";
+  context.shadowBlur = gestoForte ? 14 : 7;
 
   drawConnectors(context, landmarks, HAND_CONNECTIONS, {
-    color: gestureScore > limiarBruto ? "#ffd880" : "#8fefff",
-    lineWidth: 4,
+    color: gestoForte ? "rgba(255, 228, 168, 0.92)" : "rgba(143, 239, 255, 0.78)",
+    lineWidth: gestoForte ? 3.4 : 2.8,
   });
   drawLandmarks(context, landmarks, {
-    color: gestureScore > limiarBruto ? "#ffffff" : "#12d7ff",
-    lineWidth: 1.4,
-    radius: 5,
+    color: gestoForte ? "#fffaf0" : "#dff9ff",
+    fillColor: gestoForte ? "#ffd880" : "#12d7ff",
+    lineWidth: 0,
+    radius: (data) => ([8, 12].includes(data.index) ? 5.2 : 2.6),
   });
 
+  context.shadowBlur = 0;
   context.beginPath();
   context.moveTo(pontaIndicador.x, pontaIndicador.y);
   context.lineTo(pontaMedio.x, pontaMedio.y);
-  context.strokeStyle = gestureScore > limiarBruto ? "rgba(255, 245, 214, 0.92)" : "rgba(143, 239, 255, 0.7)";
-  context.lineWidth = 3;
+  context.strokeStyle = gestoForte ? "rgba(255, 248, 226, 0.96)" : "rgba(143, 239, 255, 0.9)";
+  context.lineWidth = gestoForte ? 3.4 : 2.8;
   context.stroke();
 
   context.beginPath();
-  context.arc(center.x, center.y, 42 + pulse * 5, 0, Math.PI * 2);
-  context.strokeStyle = gestureScore > limiarBruto ? "rgba(255, 216, 128, 0.9)" : "rgba(143, 239, 255, 0.62)";
-  context.lineWidth = 2;
-  context.stroke();
+  context.arc(centroPalma.x, centroPalma.y, gestoForte ? 12 + pulso * 2.5 : 9 + pulso * 2, 0, Math.PI * 2);
+  context.fillStyle = gestoForte ? "rgba(255, 216, 128, 0.18)" : "rgba(18, 215, 255, 0.14)";
+  context.fill();
 
-  context.beginPath();
-  context.moveTo(center.x - 14, center.y);
-  context.lineTo(center.x + 14, center.y);
-  context.moveTo(center.x, center.y - 14);
-  context.lineTo(center.x, center.y + 14);
-  context.strokeStyle = "rgba(255, 255, 255, 0.5)";
-  context.lineWidth = 1.5;
-  context.stroke();
+  for (const ponta of [pontaIndicador, pontaMedio]) {
+    context.beginPath();
+    context.arc(ponta.x, ponta.y, gestoForte ? 7.5 + pulso * 1.2 : 6.2 + pulso, 0, Math.PI * 2);
+    context.fillStyle = gestoForte ? "rgba(255, 216, 128, 0.16)" : "rgba(143, 239, 255, 0.14)";
+    context.fill();
+  }
+
   context.restore();
 }
 
@@ -1130,6 +1122,7 @@ function ativarDominio() {
   playDomainSound();
   queueClipCapture();
   definirSelo(referencias.statusGesto, "Ativado", "hot");
+  definirStatusPalco("Dominio ativo", "hot");
   definirDebug("Unlimited Void disparado. Espera o cooldown e rearmamento.");
 
   if (navigator.vibrate) {
@@ -1138,6 +1131,7 @@ function ativarDominio() {
 
   window.setTimeout(() => {
     if (estado.cameraAtiva) {
+      definirStatusPalco("Solte e refaca", "warn");
       definirDebug("Pronto para outra invocacao. Solta o gesto e faz de novo.");
     }
   }, DURACAO_EFEITO_MS);
@@ -1511,6 +1505,7 @@ async function iniciarRastreamentoMao() {
       definirSelo(referencias.statusMao, "Sem mao", "idle");
       definirSelo(referencias.statusGesto, "Nao detectado", "idle");
       definirSelo(referencias.statusMovimento, "Sem quadro", "idle");
+      definirStatusPalco("Sem mao", "idle");
       limparSobreposicaoMao();
       definirItemRetorno(referencias.retornoEnquadramento, "warn", "Mostre a mao inteira para a camera");
       definirItemRetorno(referencias.retornoMovimento, "warn", "Segure o gesto firme para ativar.");
@@ -1576,14 +1571,17 @@ async function iniciarRastreamentoMao() {
       result.parts.framing > 0.72 ? "Bem enquadrada" : result.parts.framing > 0.46 ? "Quase la" : "Ajuste a mao",
       result.parts.framing > 0.72 ? "ok" : result.parts.framing > 0.46 ? "warn" : "idle"
     );
+    definirStatusPalco(gestureReady ? "Selo pronto" : "Mao detectada", gestureReady ? "ok" : "warn");
 
     if (estado.precisaRearmarGesto) {
       if (gestureScoreSuavizado < obterLimiarRearmeGesto()) {
         estado.precisaRearmarGesto = false;
         definirSelo(referencias.statusGesto, "Rearmado", "idle");
+        definirStatusPalco("Rearmado", "idle");
         definirDebug("Rearmado. Agora pode montar o gesto de novo.");
       } else {
         definirSelo(referencias.statusGesto, "Solte e refaca", "warn");
+        definirStatusPalco("Solte e refaca", "warn");
       }
       atualizarOrientacoes(metrics, result, false);
       atualizarTreinoGuiado(result);
@@ -1592,6 +1590,7 @@ async function iniciarRastreamentoMao() {
 
     if (estado.modoCalibracao) {
       definirSelo(referencias.statusGesto, "Calibrando", "warn");
+      definirStatusPalco("Calibrando", "warn");
       atualizarOrientacoes(metrics, result, false);
       atualizarEstadoCalibracao(metrics);
       aplicarFocoTreino(result);
@@ -1647,6 +1646,7 @@ async function iniciarRastreamentoMao() {
   iniciarGravadorComposto();
   definirSelo(referencias.statusCamera, "Ativa", "ok");
   definirSelo(referencias.statusMovimento, "Aguardando mao", "idle");
+  definirStatusPalco("Procure a mao", "idle");
   referencias.botaoCalibrar.disabled = false;
   referencias.botaoTreino.disabled = false;
   referencias.botaoResetarCalibracao.disabled = !estado.perfilCalibracao;
@@ -1780,6 +1780,7 @@ function resetarCalibracao() {
 async function iniciarExperiencia() {
   referencias.botaoIniciar.disabled = true;
   referencias.botaoIniciar.textContent = "Inicializando...";
+  definirStatusPalco("Inicializando", "warn");
   definirDebug("Pedindo camera e carregando o rastreio da mao.");
 
   try {
@@ -1789,6 +1790,7 @@ async function iniciarExperiencia() {
     referencias.botaoIniciar.disabled = false;
     referencias.botaoIniciar.textContent = "Tentar novamente";
     definirSelo(referencias.statusCamera, "Falhou", "hot");
+    definirStatusPalco("Falhou", "hot");
     definirDebug(error.message || "Nao foi possivel iniciar o demo.");
   }
 }
@@ -1801,6 +1803,7 @@ function iniciarInterface() {
   registrarAplicativoProgressivo();
 
   definirSelo(referencias.statusMovimento, "Aguardando", "idle");
+  definirStatusPalco("Aguardando camera", "idle");
   atualizarGuiaPalco({ rastreada: false, pronto: false });
   referencias.textoPwa.textContent = "A versao web e a principal. O dominio ativa so com o gesto.";
 

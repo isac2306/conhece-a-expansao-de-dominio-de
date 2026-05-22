@@ -1,4 +1,4 @@
-const CACHE_NAME = "unlimited-void-trigger-v4";
+const CACHE_NAME = "unlimited-void-trigger-v5";
 
 const SAME_ORIGIN_ASSETS = [
   "./",
@@ -8,7 +8,6 @@ const SAME_ORIGIN_ASSETS = [
   "./manifest.json",
   "./guides/gojo-gesture-guide.svg",
   "./guides/gojo-manga-reference.svg",
-  "./guides/gojo-stage-ghost.svg",
   "./icons/icon-any.svg",
   "./icons/icon-maskable.svg",
 ];

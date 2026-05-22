@@ -31,16 +31,7 @@
           <video id="camera" playsinline muted></video>
           <canvas id="compositeCanvas"></canvas>
           <canvas id="overlay"></canvas>
-          <div id="stageGuide" class="stage-guide">
-            <img
-              class="stage-guide-image"
-              src="guides/gojo-stage-ghost.svg"
-              alt="Guia fantasma do gesto sobre a camera"
-            >
-            <div id="stageGuideLabel" class="stage-guide-label">Encaixe sua mao aqui</div>
-          </div>
-          <div class="scanline-layer"></div>
-          <p id="stageStatus" class="stage-status">Toque em liberar camera para comecar.</p>
+          <p id="stageStatus" class="stage-status idle">Aguardando camera</p>
 
           <div id="domainOverlay" class="domain-overlay" aria-hidden="true">
             <div class="domain-flash"></div>
