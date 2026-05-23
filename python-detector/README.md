@@ -12,6 +12,12 @@ Ele usa:
 
 Esta versao deixa a camera mais fluida e nitida enquanto processa a mao em um quadro menor por baixo. Assim o resultado visual continua detalhado, mas o detector nao precisa carregar o custo inteiro da resolucao maxima.
 
+Tambem entrou um refinamento mais forte de leitura:
+
+- `suavizacao temporal` dos pontos da mao para reduzir tremida
+- `presets de qualidade` para escolher entre detalhe e fluidez
+- `melhoria visual` com contraste local e nitidez opcional
+
 ## Fluxo recomendado
 
 1. Instale Python `3.11` ou `3.12` se o `mediapipe` falhar no seu `3.13`.
@@ -25,6 +31,10 @@ Esta versao deixa a camera mais fluida e nitida enquanto processa a mao em um qu
 - `Q` ou `Esc`: sair
 - `F`: fullscreen
 - `H`: esconder ou mostrar HUD
+- `1`: preset `Detalhe`
+- `2`: preset `Balanceado`
+- `3`: preset `Fluido`
+- `V`: ligar ou desligar melhoria visual
 - `C`: iniciar ou parar calibracao
 - `R`: limpar calibracao
 
@@ -38,7 +48,10 @@ Esta versao deixa a camera mais fluida e nitida enquanto processa a mao em um qu
 ## Notas de qualidade
 
 - A camera tenta abrir em `1920x1080` e cai para resolucoes menores se preciso.
-- O detector processa em largura maxima de `960px` para preservar fluidez.
+- O detector processa em largura menor por baixo, conforme o preset ativo.
+- `Detalhe` prioriza leitura mais precisa e imagem mais rica.
+- `Balanceado` e o ponto de partida recomendado.
+- `Fluido` sacrifica um pouco do detalhe para ganhar resposta em maquinas ou cameras mais fracas.
 - O desenho na tela continua usando o quadro de alta resolucao da camera.
 
 ## Se o MediaPipe nao instalar
