@@ -1,4 +1,4 @@
-# Detector Python do Selo do Gojo
+# Detector Python do Dominio do Gojo
 
 Este app existe para priorizar o que mais importa agora: `sensor da mao confiavel`.
 
@@ -17,17 +17,20 @@ Tambem entrou um refinamento mais forte de leitura:
 - `suavizacao temporal` dos pontos da mao para reduzir tremida
 - `presets de qualidade` para escolher entre detalhe e fluidez
 - `melhoria visual` com contraste local e nitidez opcional
+- `treino real do gesto` para aprender o seu dedo levantado
 - `HUD cinematico` com chips, barras e guia de enquadramento
-- `referencia do selo` desenhada na propria tela
-- `expansao de dominio` com pre-ativacao, flash, replay e fundo cosmico atras de voce
+- `referencia do gesto` desenhada na propria tela
+- `som procedural` no momento da expansao
+- `expansao de dominio` com pre-ativacao, ruptura visual e fundo cosmico atras de voce
 
 ## Fluxo recomendado
 
 1. Instale Python `3.11` ou `3.12` se o `mediapipe` falhar no seu `3.13`.
 2. Rode `setup_detector.ps1`.
 3. Rode `run_detector.ps1`.
-4. Aponte a mao para a camera e monte o selo.
-5. Quando o status ficar em `Selo pronto`, o dominio ativa sozinho.
+4. Aponte a mao para a camera e levante `1 dedo`.
+5. Se quiser, aperte `C` e treine o gesto com o dedo que voce quer usar.
+6. Quando o status ficar em `Dedo pronto`, o dominio ativa sozinho.
 
 ## Controles
 
@@ -39,18 +42,20 @@ Tambem entrou um refinamento mais forte de leitura:
 - `3`: preset `Fluido`
 - `M`: alternar entre visual `Anime` e `Clean`
 - `V`: ligar ou desligar melhoria visual
-- `T`: mostrar ou esconder a referencia do selo
+- `T`: mostrar ou esconder a referencia do gesto
+- `S`: ligar ou desligar som
 - `C`: iniciar ou parar calibracao
 - `R`: limpar calibracao
 
 ## O que observar no teste real
 
-- `Status`: deve sair de `Sem mao` para `Lendo o gesto` e depois `Selo pronto`
+- `Status`: deve sair de `Sem mao` para `Lendo o gesto` e depois `Dedo pronto`
+- `Gesto`: agora o foco e deixar `apenas 1 dedo` levantado
 - `Score suave`: deve subir e se manter
-- `Estabilidade`: deve crescer enquanto voce segura o selo
+- `Estabilidade`: deve crescer enquanto voce segura o dedo no gesto
 - `Presenca no quadro`: deve melhorar quando a mao fica mais proxima e inteira na tela
 - `Guia central`: ajuda a manter a mao no lugar ideal para o detector
-- `Referencia do selo`: serve como aproximacao visual do gesto do Gojo
+- `Referencia do gesto`: serve como aproximacao visual da pose esperada
 
 ## Notas de qualidade
 
@@ -61,6 +66,7 @@ Tambem entrou um refinamento mais forte de leitura:
 - `Fluido` sacrifica um pouco do detalhe para ganhar resposta em maquinas ou cameras mais fracas.
 - O desenho na tela continua usando o quadro de alta resolucao da camera.
 - A segmentacao da pessoa so entra forte durante a expansao para colocar o fundo do dominio atras de voce sem pesar tanto o rastreio.
+- `setup_detector.ps1` agora tambem baixa os modelos oficiais do MediaPipe para a pasta `models`.
 
 ## Se o MediaPipe nao instalar
 
@@ -73,4 +79,5 @@ Algumas combinacoes novas de Python podem ainda nao ter wheel pronta do `mediapi
 
 - `run_detector.py`: app principal
 - `requirements.txt`: dependencias
+- `models/`: modelos oficiais do MediaPipe usados pelo detector
 - `perfil_calibracao.json`: criado automaticamente depois da calibracao
