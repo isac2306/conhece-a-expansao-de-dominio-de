@@ -6,8 +6,8 @@ import os
 import platform
 import threading
 import time
-from collections import deque
-from dataclasses import asdict, dataclass
+from collections import Counter, deque
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from typing import Iterable
 
@@ -15,9 +15,17 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
 
 TITULO_JANELA = "Selo do Gojo | Detector Python"
 CAMINHO_PERFIL = Path(__file__).with_name("perfil_calibracao.json")
+PASTA_MODELOS = Path(__file__).with_name("models")
+CAMINHO_MODELO_MAOS = PASTA_MODELOS / "hand_landmarker.task"
+CAMINHO_MODELO_SEGMENTACAO = PASTA_MODELOS / "selfie_segmenter_landscape.tflite"
 JANELA_SUAVIZACAO = 10
 QUADROS_CALIBRACAO = 24
 DURACAO_EFEITO_SEG = 2.9
@@ -25,6 +33,14 @@ DURACAO_RESIDUO_SEG = 1.1
 COOLDOWN_SEG = 5.2
 INTERVALO_SEGMENTACAO = 2
 BUFFER_REPLAY_QUADROS = 72
+DEDO_PRINCIPAIS = ("index", "middle", "ring", "pinky")
+MAPA_DEDOS = {
+    "thumb": (2, 3, 4),
+    "index": (5, 6, 8),
+    "middle": (9, 10, 12),
+    "ring": (13, 14, 16),
+    "pinky": (17, 18, 20),
+}
 
 
 def limitar(valor: float, minimo: float, maximo: float) -> float:
@@ -116,12 +132,13 @@ def pontuacao_proximidade(valor: float, alvo: float, tolerancia: float) -> float
 
 @dataclass
 class PerfilGesto:
-    index_extension: float = 0.30
-    middle_extension: float = 0.30
-    tip_gap: float = 0.42
-    angle: float = 22.0
-    ring_curl: float = 0.04
-    pinky_curl: float = 0.05
+    dedo_alvo: str = "index"
+    thumb_extension: float = 0.02
+    index_extension: float = 0.34
+    middle_extension: float = 0.04
+    ring_extension: float = -0.03
+    pinky_extension: float = -0.04
+    angle_up: float = 20.0
     updated_at: float = 0.0
 
 
@@ -173,14 +190,17 @@ class MetricasGesto:
     hand_scale: float
     center_x: float
     center_y: float
+    thumb_extension: float
     index_extension: float
     middle_extension: float
-    ring_curl: float
-    pinky_curl: float
-    tip_gap: float
-    angle: float
-    crossing: bool
-    order_flip: bool
+    ring_extension: float
+    pinky_extension: float
+    dominant_finger: str
+    dominant_extension: float
+    second_extension: float
+    raised_count: int
+    target_angle: float
+    dominance_gap: float
 
 
 class CapturaCamera:
@@ -262,18 +282,30 @@ class CapturaCamera:
 class DetectorGojo:
     def __init__(self) -> None:
         self.perfil = self._carregar_perfil()
-        self.mp_hands = mp.solutions.hands
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.mp_styles = mp.solutions.drawing_styles
-        self.mp_segmentation = mp.solutions.selfie_segmentation
-        self.hands = self.mp_hands.Hands(
-            static_image_mode=False,
-            max_num_hands=1,
-            model_complexity=0,
-            min_detection_confidence=0.58,
-            min_tracking_confidence=0.50,
-        )
-        self.segmentacao = self.mp_segmentation.SelfieSegmentation(model_selection=1)
+        self.usando_tasks = not hasattr(mp, "solutions")
+        self.mp_drawing = None
+        self.mp_styles = None
+        self.mp_segmentation = None
+        self.conexoes_mao = ()
+        if self.usando_tasks:
+            self.mp_hands = mp.tasks.vision.HandLandmarksConnections
+            self.hands = self._criar_detector_maos_tasks()
+            self.segmentacao = self._criar_segmentador_tasks()
+            self.conexoes_mao = self.mp_hands.HAND_CONNECTIONS
+        else:
+            self.mp_hands = mp.solutions.hands
+            self.mp_drawing = mp.solutions.drawing_utils
+            self.mp_styles = mp.solutions.drawing_styles
+            self.mp_segmentation = mp.solutions.selfie_segmentation
+            self.hands = self.mp_hands.Hands(
+                static_image_mode=False,
+                max_num_hands=1,
+                model_complexity=0,
+                min_detection_confidence=0.58,
+                min_tracking_confidence=0.50,
+            )
+            self.segmentacao = self.mp_segmentation.SelfieSegmentation(model_selection=1)
+            self.conexoes_mao = self.mp_hands.HAND_CONNECTIONS
         self.captura = CapturaCamera()
         self.historico_pontuacao: deque[float] = deque(maxlen=JANELA_SUAVIZACAO)
         self.buffer_replay: deque[np.ndarray] = deque(maxlen=BUFFER_REPLAY_QUADROS)
@@ -284,6 +316,7 @@ class DetectorGojo:
         self.preset_qualidade_id = "2"
         self.pontos_suavizados: np.ndarray | None = None
         self.mascara_pessoa: np.ndarray | None = None
+        self.mascara_pessoa_suavizada: np.ndarray | None = None
         self.contador_segmentacao = 0
         self.ultimas_metricas: MetricasGesto | None = None
         self.ultimas_landmarks = None
@@ -299,6 +332,38 @@ class DetectorGojo:
         self.modo_visual = "anime"
         self.intensidade_pre_ativacao = 0.0
         self.cache_vinheta: dict[tuple[int, int], np.ndarray] = {}
+        self.som_ativo = True
+        self.thread_audio: threading.Thread | None = None
+
+    def _criar_detector_maos_tasks(self):
+        if not CAMINHO_MODELO_MAOS.exists():
+            raise RuntimeError(
+                "Modelo de maos nao encontrado. Rode setup_detector.ps1 para baixar hand_landmarker.task."
+            )
+
+        opcoes_base = mp.tasks.BaseOptions(model_asset_path=str(CAMINHO_MODELO_MAOS))
+        opcoes = mp.tasks.vision.HandLandmarkerOptions(
+            base_options=opcoes_base,
+            running_mode=mp.tasks.vision.RunningMode.VIDEO,
+            num_hands=1,
+            min_hand_detection_confidence=0.58,
+            min_hand_presence_confidence=0.50,
+            min_tracking_confidence=0.50,
+        )
+        return mp.tasks.vision.HandLandmarker.create_from_options(opcoes)
+
+    def _criar_segmentador_tasks(self):
+        if not CAMINHO_MODELO_SEGMENTACAO.exists():
+            return None
+
+        opcoes_base = mp.tasks.BaseOptions(model_asset_path=str(CAMINHO_MODELO_SEGMENTACAO))
+        opcoes = mp.tasks.vision.ImageSegmenterOptions(
+            base_options=opcoes_base,
+            running_mode=mp.tasks.vision.RunningMode.VIDEO,
+            output_category_mask=False,
+            output_confidence_masks=True,
+        )
+        return mp.tasks.vision.ImageSegmenter.create_from_options(opcoes)
 
     def _carregar_perfil(self) -> PerfilGesto:
         if not CAMINHO_PERFIL.exists():
@@ -307,13 +372,23 @@ class DetectorGojo:
             dados = json.loads(CAMINHO_PERFIL.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return PerfilGesto()
-        return PerfilGesto(**{**asdict(PerfilGesto()), **dados})
+        chaves_validas = {campo.name for campo in fields(PerfilGesto)}
+        dados_migrados = dict(dados)
+        if "angle" in dados_migrados and "angle_up" not in dados_migrados:
+            dados_migrados["angle_up"] = dados_migrados["angle"]
+        if "ring_curl" in dados_migrados and "ring_extension" not in dados_migrados:
+            dados_migrados["ring_extension"] = -abs(float(dados_migrados["ring_curl"]))
+        if "pinky_curl" in dados_migrados and "pinky_extension" not in dados_migrados:
+            dados_migrados["pinky_extension"] = -abs(float(dados_migrados["pinky_curl"]))
+        dados_filtrados = {chave: valor for chave, valor in dados_migrados.items() if chave in chaves_validas}
+        return PerfilGesto(**{**asdict(PerfilGesto()), **dados_filtrados})
 
     def _salvar_perfil(self) -> None:
         CAMINHO_PERFIL.write_text(json.dumps(asdict(self.perfil), indent=2), encoding="utf-8")
 
     def _limpar_perfil(self) -> None:
         self.perfil = PerfilGesto()
+        self.pontos_suavizados = None
         if CAMINHO_PERFIL.exists():
             CAMINHO_PERFIL.unlink()
 
@@ -321,7 +396,49 @@ class DetectorGojo:
         return PRESETS_QUALIDADE[self.preset_qualidade_id]
 
     def _extrair_pontos(self, landmarks) -> np.ndarray:
-        return np.array([(lm.x, lm.y) for lm in landmarks.landmark], dtype=np.float32)
+        pontos = landmarks.landmark if hasattr(landmarks, "landmark") else landmarks
+        return np.array([(lm.x, lm.y) for lm in pontos], dtype=np.float32)
+
+    def _conexoes_mao_iteraveis(self) -> list[tuple[int, int]]:
+        conexoes: list[tuple[int, int]] = []
+        for conexao in self.conexoes_mao:
+            if hasattr(conexao, "start") and hasattr(conexao, "end"):
+                conexoes.append((int(conexao.start), int(conexao.end)))
+            else:
+                origem, destino = conexao
+                conexoes.append((int(origem), int(destino)))
+        return conexoes
+
+    def _criar_mp_image_rgb(self, quadro_bgr: np.ndarray) -> mp.Image:
+        quadro_rgb = cv2.cvtColor(quadro_bgr, cv2.COLOR_BGR2RGB)
+        return mp.Image(image_format=mp.ImageFormat.SRGB, data=quadro_rgb)
+
+    def _detectar_maos(self, quadro_bgr: np.ndarray, timestamp_ms: int):
+        if self.usando_tasks:
+            imagem_mp = self._criar_mp_image_rgb(quadro_bgr)
+            return self.hands.detect_for_video(imagem_mp, timestamp_ms)
+
+        quadro_rgb = cv2.cvtColor(quadro_bgr, cv2.COLOR_BGR2RGB)
+        return self.hands.process(quadro_rgb)
+
+    def _extensoes_metricas(self, metricas: MetricasGesto) -> dict[str, float]:
+        return {
+            "thumb": metricas.thumb_extension,
+            "index": metricas.index_extension,
+            "middle": metricas.middle_extension,
+            "ring": metricas.ring_extension,
+            "pinky": metricas.pinky_extension,
+        }
+
+    def _nome_dedo(self, dedo: str) -> str:
+        nomes = {
+            "thumb": "polegar",
+            "index": "indicador",
+            "middle": "medio",
+            "ring": "anelar",
+            "pinky": "mindinho",
+        }
+        return nomes.get(dedo, dedo)
 
     def _suavizar_pontos(self, pontos: np.ndarray) -> np.ndarray:
         alpha = self._preset_atual().suavizacao_pontos
@@ -414,6 +531,9 @@ class DetectorGojo:
         return self.buffer_replay[-indice].copy()
 
     def _atualizar_mascara_pessoa(self, quadro: np.ndarray, forcar: bool = False) -> None:
+        if self.segmentacao is None:
+            return
+
         precisa_segmentar = forcar or self.efeito_inicio or self.intensidade_pre_ativacao > 0.26
         if not precisa_segmentar:
             return
@@ -433,15 +553,34 @@ class DetectorGojo:
                 interpolation=cv2.INTER_AREA,
             )
 
-        resultado = self.segmentacao.process(cv2.cvtColor(quadro_seg, cv2.COLOR_BGR2RGB))
-        if resultado.segmentation_mask is None:
-            return
+        if self.usando_tasks:
+            imagem_mp = self._criar_mp_image_rgb(quadro_seg)
+            resultado = self.segmentacao.segment_for_video(imagem_mp, int(time.monotonic() * 1000))
+            if not getattr(resultado, "confidence_masks", None):
+                return
+            mascara = resultado.confidence_masks[-1].numpy_view().astype(np.float32)
+        else:
+            resultado = self.segmentacao.process(cv2.cvtColor(quadro_seg, cv2.COLOR_BGR2RGB))
+            if resultado.segmentation_mask is None:
+                return
+            mascara = resultado.segmentation_mask.astype(np.float32)
 
-        mascara = cv2.GaussianBlur(resultado.segmentation_mask, (0, 0), 2.8)
+        mascara = cv2.GaussianBlur(mascara, (0, 0), 2.6)
         if escala < 1.0:
             mascara = cv2.resize(mascara, (largura, altura), interpolation=cv2.INTER_CUBIC)
-        mascara = np.clip((mascara - 0.10) / 0.82, 0.0, 1.0).astype(np.float32)
-        self.mascara_pessoa = mascara
+        if self.usando_tasks:
+            mascara = np.clip((mascara - 0.16) / 0.72, 0.0, 1.0)
+        else:
+            mascara = np.clip((mascara - 0.10) / 0.82, 0.0, 1.0)
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, kernel)
+        mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN, kernel)
+        if self.mascara_pessoa_suavizada is None or self.mascara_pessoa_suavizada.shape != mascara.shape:
+            self.mascara_pessoa_suavizada = mascara
+        else:
+            self.mascara_pessoa_suavizada = self.mascara_pessoa_suavizada * 0.74 + mascara * 0.26
+        mascara = cv2.GaussianBlur(self.mascara_pessoa_suavizada, (0, 0), 2.2)
+        self.mascara_pessoa = np.clip(mascara, 0.0, 1.0).astype(np.float32)
 
     def _gerar_fundo_dominio(
         self,
@@ -545,145 +684,167 @@ class DetectorGojo:
     def _calcular_metricas_de_pontos(self, pontos_array: np.ndarray) -> MetricasGesto:
         pontos = [tuple(map(float, ponto)) for ponto in pontos_array]
         wrist = pontos[0]
-        index_mcp, index_pip, index_tip = pontos[5], pontos[6], pontos[8]
-        middle_mcp, middle_pip, middle_tip = pontos[9], pontos[10], pontos[12]
-        ring_pip, ring_tip = pontos[14], pontos[16]
-        pinky_mcp, pinky_pip, pinky_tip = pontos[17], pontos[18], pontos[20]
-        hand_scale = max(distancia(index_mcp, pinky_mcp), 0.001)
-        index_vector = vetor(index_pip, index_tip)
-        middle_vector = vetor(middle_pip, middle_tip)
-        tip_gap = distancia(index_tip, middle_tip) / hand_scale
-        angle = angulo_entre(index_vector, middle_vector)
-        order_flip = (index_tip[0] - middle_tip[0]) * (index_mcp[0] - middle_mcp[0]) < 0
-        crossing = segmentos_se_cruzam(index_pip, index_tip, middle_pip, middle_tip)
+        hand_scale = max(distancia(pontos[5], pontos[17]), 0.001)
+        extensoes: dict[str, float] = {}
+        angulos: dict[str, float] = {}
+        for dedo, (mcp_i, pip_i, tip_i) in MAPA_DEDOS.items():
+            mcp = pontos[mcp_i]
+            pip = pontos[pip_i]
+            tip = pontos[tip_i]
+            extensoes[dedo] = (distancia(tip, wrist) - distancia(pip, wrist)) / hand_scale
+            angulos[dedo] = angulo_entre(vetor(pip, tip), (0.0, -1.0))
+
+        dedos_principais = sorted(((dedo, extensoes[dedo]) for dedo in DEDO_PRINCIPAIS), key=lambda item: item[1], reverse=True)
+        dominant_finger, dominant_extension = dedos_principais[0]
+        second_extension = dedos_principais[1][1]
+        raised_count = sum(1 for _, valor in dedos_principais if valor > 0.15)
         return MetricasGesto(
             hand_scale=hand_scale,
-            center_x=media([wrist[0], index_mcp[0], middle_mcp[0], pinky_mcp[0]]),
-            center_y=media([wrist[1], index_mcp[1], middle_mcp[1], pinky_mcp[1]]),
-            index_extension=(distancia(index_tip, wrist) - distancia(index_pip, wrist)) / hand_scale,
-            middle_extension=(distancia(middle_tip, wrist) - distancia(middle_pip, wrist)) / hand_scale,
-            ring_curl=(distancia(ring_pip, wrist) - distancia(ring_tip, wrist)) / hand_scale,
-            pinky_curl=(distancia(pinky_pip, wrist) - distancia(pinky_tip, wrist)) / hand_scale,
-            tip_gap=tip_gap,
-            angle=angle,
-            crossing=crossing,
-            order_flip=order_flip,
+            center_x=media([wrist[0], pontos[5][0], pontos[9][0], pontos[17][0]]),
+            center_y=media([wrist[1], pontos[5][1], pontos[9][1], pontos[17][1]]),
+            thumb_extension=extensoes["thumb"],
+            index_extension=extensoes["index"],
+            middle_extension=extensoes["middle"],
+            ring_extension=extensoes["ring"],
+            pinky_extension=extensoes["pinky"],
+            dominant_finger=dominant_finger,
+            dominant_extension=dominant_extension,
+            second_extension=second_extension,
+            raised_count=raised_count,
+            target_angle=angulos[dominant_finger],
+            dominance_gap=dominant_extension - second_extension,
         )
 
     def _pontuar_gesto(self, metricas: MetricasGesto) -> dict[str, object]:
         perfil = self.perfil
-        index_score = normalizar_pontuacao(
-            metricas.index_extension,
-            max(0.14, perfil.index_extension * 0.68),
-            max(0.26, perfil.index_extension * 1.08),
+        extensoes = self._extensoes_metricas(metricas)
+        extensoes_perfil = {
+            "thumb": perfil.thumb_extension,
+            "index": perfil.index_extension,
+            "middle": perfil.middle_extension,
+            "ring": perfil.ring_extension,
+            "pinky": perfil.pinky_extension,
+        }
+        dedo_alvo = perfil.dedo_alvo if perfil.dedo_alvo in DEDO_PRINCIPAIS else "index"
+
+        dedo_score = normalizar_pontuacao(
+            extensoes[dedo_alvo],
+            max(0.16, extensoes_perfil[dedo_alvo] * 0.70),
+            max(0.28, extensoes_perfil[dedo_alvo] * 1.06),
         )
-        middle_score = normalizar_pontuacao(
-            metricas.middle_extension,
-            max(0.14, perfil.middle_extension * 0.68),
-            max(0.26, perfil.middle_extension * 1.08),
-        )
-        close_score = inverter_pontuacao(
-            metricas.tip_gap,
-            max(0.30, perfil.tip_gap * 1.14),
-            max(0.20, perfil.tip_gap * 0.90),
-        )
-        cross_by_angle = pontuacao_proximidade(
-            metricas.angle,
-            limitar(perfil.angle, 12.0, 42.0),
-            max(12.0, perfil.angle * 0.80),
-        )
-        cross_score = (
-            1.0
-            if metricas.crossing
-            else max(0.72, cross_by_angle)
-            if metricas.order_flip
-            else cross_by_angle * 0.30
-        )
-        ring_score = normalizar_pontuacao(
-            metricas.ring_curl,
-            min(-0.05, perfil.ring_curl - 0.12),
-            max(0.02, perfil.ring_curl + 0.08),
-        )
-        pinky_score = normalizar_pontuacao(
-            metricas.pinky_curl,
-            min(-0.05, perfil.pinky_curl - 0.12),
-            max(0.02, perfil.pinky_curl + 0.08),
-        )
+        match_score = 1.0 if metricas.dominant_finger == dedo_alvo else 0.08
+        count_score = 1.0 if metricas.raised_count == 1 else limitar(1.0 - abs(metricas.raised_count - 1) * 0.52, 0.0, 1.0)
+        dominance_score = normalizar_pontuacao(metricas.dominance_gap, 0.08, 0.24)
+        angle_score = inverter_pontuacao(metricas.target_angle, max(18.0, perfil.angle_up + 8.0), 42.0)
+        fold_scores = []
+        for dedo, base in extensoes_perfil.items():
+            if dedo == dedo_alvo:
+                continue
+            fold_scores.append(inverter_pontuacao(extensoes[dedo], base + 0.05, 0.22))
+        fold_score = media(fold_scores)
         framing_score = normalizar_pontuacao(metricas.hand_scale, 0.095, 0.25)
-        balance_score = pontuacao_proximidade(metricas.index_extension, metricas.middle_extension, 0.18)
         overall = (
-            index_score * 0.17
-            + middle_score * 0.17
-            + close_score * 0.19
-            + cross_score * 0.20
-            + ring_score * 0.08
-            + pinky_score * 0.08
-            + framing_score * 0.05
-            + balance_score * 0.06
+            dedo_score * 0.30
+            + fold_score * 0.24
+            + count_score * 0.16
+            + dominance_score * 0.12
+            + angle_score * 0.10
+            + match_score * 0.04
+            + framing_score * 0.04
         )
         return {
             "overall": overall,
             "parts": {
                 "framing": framing_score,
-                "index": index_score,
-                "middle": middle_score,
-                "close": close_score,
-                "cross": cross_score,
-                "ring": ring_score,
-                "pinky": pinky_score,
-                "balance": balance_score,
+                "target": dedo_score,
+                "fold": fold_score,
+                "count": count_score,
+                "dominance": dominance_score,
+                "angle": angle_score,
+                "match": match_score,
             },
         }
 
     def _status_texto(self, score: float, score_suave: float, pronto: bool) -> str:
         if self.calibrando:
             faltam = max(0, QUADROS_CALIBRACAO - len(self.amostras_calibracao))
-            return f"Calibrando selo... faltam {faltam} amostras"
+            return f"Treinando o gesto... faltam {faltam} amostras"
         if self.precisa_rearmar:
             return "Solte o gesto e refaca para rearmar"
         if pronto:
-            return "Selo pronto"
+            return "Dedo pronto"
         if score_suave > 0.55 or score > 0.62:
             return "Lendo o gesto"
-        return "Monte o selo"
+        return "Levante 1 dedo"
 
     def _explicacao_gesto(self, partes: dict[str, float], pronto: bool) -> str:
-        extend_score = media([partes["index"], partes["middle"]])
-        fold_score = media([partes["ring"], partes["pinky"]])
+        dedo_alvo = self._nome_dedo(self.perfil.dedo_alvo)
         if pronto:
-            return "O dominio ativa so com o selo firme."
+            return f"O dominio ativa quando o {dedo_alvo} ficar firme."
         if partes["framing"] < 0.55:
             return "Aproxime a mao e deixe o pulso inteiro no quadro."
-        if extend_score < 0.62:
-            return "Estique mais indicador e medio."
-        if partes["cross"] < 0.62:
-            return "Cruze mais os dois dedos no centro."
-        if partes["close"] < 0.62:
-            return "Aproxime mais as pontas do indicador e do medio."
-        if fold_score < 0.45:
-            return "Dobre mais anelar e mindinho."
-        return "Segure o gesto firme por um instante."
+        if partes["target"] < 0.62:
+            return f"Levante mais o {dedo_alvo}."
+        if partes["count"] < 0.70 or partes["fold"] < 0.62:
+            return "Abaixe os outros dedos e deixe so um levantado."
+        if partes["angle"] < 0.62:
+            return f"Aponte o {dedo_alvo} mais para cima."
+        if partes["match"] < 0.95:
+            return f"Use o mesmo dedo treinado: {dedo_alvo}."
+        return "Segure o dedo firme por um instante."
 
-    def _atualizar_calibracao(self, metricas: MetricasGesto, score: float) -> None:
+    def _atualizar_calibracao(self, metricas: MetricasGesto) -> None:
         if not self.calibrando:
             return
-        if metricas.hand_scale < 0.14 or score < 0.48:
+        if metricas.hand_scale < 0.14 or metricas.raised_count < 1 or metricas.dominant_extension < 0.18:
             return
         self.amostras_calibracao.append(metricas)
         if len(self.amostras_calibracao) < QUADROS_CALIBRACAO:
             return
+        dedo_alvo, _ = Counter(m.dominant_finger for m in self.amostras_calibracao).most_common(1)[0]
+        amostras_filtradas = [m for m in self.amostras_calibracao if m.dominant_finger == dedo_alvo]
+        if not amostras_filtradas:
+            amostras_filtradas = list(self.amostras_calibracao)
         self.perfil = PerfilGesto(
-            index_extension=media(m.index_extension for m in self.amostras_calibracao),
-            middle_extension=media(m.middle_extension for m in self.amostras_calibracao),
-            tip_gap=media(m.tip_gap for m in self.amostras_calibracao),
-            angle=media(m.angle for m in self.amostras_calibracao),
-            ring_curl=media(m.ring_curl for m in self.amostras_calibracao),
-            pinky_curl=media(m.pinky_curl for m in self.amostras_calibracao),
+            dedo_alvo=dedo_alvo,
+            thumb_extension=media(m.thumb_extension for m in amostras_filtradas),
+            index_extension=media(m.index_extension for m in amostras_filtradas),
+            middle_extension=media(m.middle_extension for m in amostras_filtradas),
+            ring_extension=media(m.ring_extension for m in amostras_filtradas),
+            pinky_extension=media(m.pinky_extension for m in amostras_filtradas),
+            angle_up=media(m.target_angle for m in amostras_filtradas),
             updated_at=time.time(),
         )
         self._salvar_perfil()
         self.calibrando = False
         self.amostras_calibracao.clear()
+
+    def _tocar_som_dominio(self) -> None:
+        if not self.som_ativo or winsound is None:
+            return
+        if self.thread_audio and self.thread_audio.is_alive():
+            return
+        self.thread_audio = threading.Thread(target=self._sequencia_som_dominio, name="som-dominio", daemon=True)
+        self.thread_audio.start()
+
+    def _sequencia_som_dominio(self) -> None:
+        if winsound is None:
+            return
+        try:
+            sequencia = (
+                (540, 80),
+                (680, 90),
+                (820, 100),
+                (1040, 120),
+                (1320, 140),
+                (1760, 180),
+                (220, 260),
+            )
+            for frequencia, duracao in sequencia:
+                winsound.Beep(frequencia, duracao)
+                time.sleep(0.01)
+        except RuntimeError:
+            return
 
     def _atualizar_fps(self) -> float:
         agora = time.perf_counter()
@@ -701,6 +862,7 @@ class DetectorGojo:
         self.precisa_rearmar = True
         self.quadros_estaveis = 0
         self.efeito_inicio = agora
+        self._tocar_som_dominio()
 
     def _desenhar_overlay_mao(self, quadro: np.ndarray, pontos_suaves: np.ndarray, score: float) -> None:
         if self.ultimas_metricas is None:
@@ -715,7 +877,7 @@ class DetectorGojo:
 
         brilho = np.zeros_like(quadro)
         linhas = np.zeros_like(quadro)
-        for origem, destino in self.mp_hands.HAND_CONNECTIONS:
+        for origem, destino in self._conexoes_mao_iteraveis():
             cv2.line(brilho, pontos_px[origem], pontos_px[destino], cor_linhas, 8, cv2.LINE_AA)
             cv2.line(linhas, pontos_px[origem], pontos_px[destino], cor_linhas, 2, cv2.LINE_AA)
 
@@ -734,9 +896,15 @@ class DetectorGojo:
         cv2.circle(quadro, centro, 52, cor_linhas, 2, lineType=cv2.LINE_AA)
         cv2.circle(quadro, centro, 72, cor_linhas, 1, lineType=cv2.LINE_AA)
 
-        ponta_indicador = pontos_px[8]
-        ponta_medio = pontos_px[12]
-        cv2.line(quadro, ponta_indicador, ponta_medio, tema["alerta"], 2, lineType=cv2.LINE_AA)
+        _, pip_indice, ponta_indice = MAPA_DEDOS[self.perfil.dedo_alvo]
+        ponta_alvo = pontos_px[ponta_indice]
+        pip_alvo = pontos_px[pip_indice]
+        brilho_alvo = np.zeros_like(quadro)
+        cv2.line(brilho_alvo, pip_alvo, ponta_alvo, tema["alerta"], 12, cv2.LINE_AA)
+        brilho_alvo = cv2.GaussianBlur(brilho_alvo, (0, 0), 6.0)
+        self._misturar_overlay(quadro, brilho_alvo, 0.34)
+        cv2.line(quadro, pip_alvo, ponta_alvo, tema["alerta"], 3, lineType=cv2.LINE_AA)
+        cv2.circle(quadro, ponta_alvo, 10, tema["alerta"], 2, cv2.LINE_AA)
 
     def _desenhar_chip(
         self,
@@ -817,7 +985,8 @@ class DetectorGojo:
         cv2.rectangle(overlay, (x1, y1), (x2, y2), tema["secundaria"], 1, cv2.LINE_AA)
         self._misturar_overlay(quadro, overlay, 0.56)
 
-        cv2.putText(quadro, "REFERENCIA DO SELO", (x1 + 16, y1 + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.58, tema["texto"], 1, cv2.LINE_AA)
+        dedo_alvo = self._nome_dedo(self.perfil.dedo_alvo)
+        cv2.putText(quadro, "REFERENCIA DO GESTO", (x1 + 16, y1 + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.58, tema["texto"], 1, cv2.LINE_AA)
         cv2.putText(quadro, "T alterna", (x1 + 16, y1 + 52), cv2.FONT_HERSHEY_SIMPLEX, 0.48, tema["texto_fraco"], 1, cv2.LINE_AA)
 
         origem_x = x1 + painel_largura // 2
@@ -850,14 +1019,16 @@ class DetectorGojo:
         ]
         for origem, destino in linhas:
             cv2.line(quadro, pontos[origem], pontos[destino], tema["secundaria"], 2, cv2.LINE_AA)
-        cv2.line(quadro, pontos["indicador_ponta"], pontos["medio_ponta"], tema["alerta"], 2, cv2.LINE_AA)
+        for dedo_baixo in ("medio_ponta", "anelar", "mindinho"):
+            cv2.circle(quadro, pontos[dedo_baixo], 8, tema["cartao"], -1, cv2.LINE_AA)
+        cv2.line(quadro, pontos["indicador_meio"], pontos["indicador_ponta"], tema["alerta"], 3, cv2.LINE_AA)
         for nome, ponto in pontos.items():
-            raio = 6 if "ponta" in nome else 4
+            raio = 7 if nome == "indicador_ponta" else 4
             cv2.circle(quadro, ponto, raio, tema["acento"], -1, cv2.LINE_AA)
 
         cv2.putText(
             quadro,
-            "Cruze indicador e medio.",
+            f"Levante so 1 dedo: {dedo_alvo}.",
             (x1 + 16, y2 - 18),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.46,
@@ -890,11 +1061,11 @@ class DetectorGojo:
         altura, largura = quadro.shape[:2]
         chip_x = 26
         chip_y = 24
-        chip_x = self._desenhar_chip(quadro, "SELO DO GOJO", (chip_x, chip_y), tema["primaria"], tema["texto"], tema["cartao"])
+        chip_x = self._desenhar_chip(quadro, "GATILHO DO DOMINIO", (chip_x, chip_y), tema["primaria"], tema["texto"], tema["cartao"])
         chip_x = self._desenhar_chip(quadro, status.upper(), (chip_x, chip_y), tema["secundaria"], tema["texto"], tema["cartao"])
 
         chip_direita = largura - 26
-        for texto in (self._preset_atual().nome, tema["nome"], f"{fps:04.1f} FPS"):
+        for texto in (self._preset_atual().nome, tema["nome"], f"{fps:04.1f} FPS", f"Som {'ON' if self.som_ativo else 'OFF'}"):
             (largura_texto, _), _ = cv2.getTextSize(texto, cv2.FONT_HERSHEY_SIMPLEX, 0.56, 1)
             chip_direita -= largura_texto + 38
             self._desenhar_chip(quadro, texto, (chip_direita, chip_y), tema["secundaria"], tema["texto"], tema["cartao"])
@@ -909,13 +1080,13 @@ class DetectorGojo:
         self._misturar_overlay(quadro, overlay, 0.58)
 
         cv2.putText(quadro, explicacao, (painel_x + 18, painel_y + 34), cv2.FONT_HERSHEY_SIMPLEX, 0.60, tema["alerta"] if not pronto else tema["sucesso"], 1, cv2.LINE_AA)
-        self._desenhar_barra(quadro, "Confianca do selo", score_suave, (painel_x + 18, painel_y + 56), 238, tema["primaria"], tema["texto"])
+        self._desenhar_barra(quadro, "Confianca do gesto", score_suave, (painel_x + 18, painel_y + 56), 238, tema["primaria"], tema["texto"])
         self._desenhar_barra(quadro, "Estabilidade", estabilidade, (painel_x + 18, painel_y + 92), 238, tema["secundaria"], tema["texto"])
         self._desenhar_barra(quadro, "Enquadramento", framing, (painel_x + 280, painel_y + 56), 220, tema["sucesso"], tema["texto"])
 
         cv2.putText(
             quadro,
-            f"Score {score * 100:05.1f}%  |  Camera {largura}x{altura}  |  Visual {'ON' if self.melhoria_visual else 'OFF'}",
+            f"Score {score * 100:05.1f}%  |  Dedo alvo {self._nome_dedo(self.perfil.dedo_alvo)}  |  Camera {largura}x{altura}",
             (painel_x + 18, painel_y + 126),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.50,
@@ -925,7 +1096,7 @@ class DetectorGojo:
         )
         cv2.putText(
             quadro,
-            "1-3 preset  M modo  V visual  T referencia  C calibrar  R resetar  F fullscreen  H HUD  Q sair",
+            "1-3 preset  M modo  V visual  T referencia  S som  C calibrar  R resetar  F fullscreen  H HUD  Q sair",
             (painel_x + 18, altura - 34),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.48,
@@ -956,6 +1127,19 @@ class DetectorGojo:
                 centro[1] + int(math.sin(angulo) * raio),
             )
             cv2.line(overlay, centro, destino, tema["secundaria"], 1, cv2.LINE_AA)
+        for indice in range(18):
+            angulo = indice * (math.pi * 2.0 / 18.0) + intensidade * 2.8
+            interno = min(largura, altura) * (0.06 + intensidade * 0.02)
+            externo = min(largura, altura) * (0.22 + intensidade * 0.12)
+            origem = (
+                centro[0] + int(math.cos(angulo) * interno),
+                centro[1] + int(math.sin(angulo) * interno),
+            )
+            destino = (
+                centro[0] + int(math.cos(angulo) * externo),
+                centro[1] + int(math.sin(angulo) * externo),
+            )
+            cv2.line(overlay, origem, destino, tema["primaria"], 1, cv2.LINE_AA)
         self._misturar_overlay(quadro, overlay, 0.10 + intensidade * 0.16)
         self._aplicar_vinheta(quadro, 0.16 + intensidade * 0.22)
 
@@ -1002,6 +1186,18 @@ class DetectorGojo:
         raio = int(min(largura, altura) * (0.12 + progresso * 0.36))
         cv2.circle(overlay, centro, raio, tema["primaria"], 4, cv2.LINE_AA)
         cv2.circle(overlay, centro, max(14, int(raio * 0.22)), tema["acento"], -1, cv2.LINE_AA)
+        for indice in range(28):
+            angulo = progresso * 6.0 + indice * (math.pi * 2.0 / 28.0)
+            comprimento = min(largura, altura) * (0.14 + (indice % 4) * 0.025 + progresso * 0.12)
+            origem = (
+                centro[0] + int(math.cos(angulo) * max(18, raio * 0.24)),
+                centro[1] + int(math.sin(angulo) * max(18, raio * 0.24)),
+            )
+            destino = (
+                centro[0] + int(math.cos(angulo) * comprimento),
+                centro[1] + int(math.sin(angulo) * comprimento),
+            )
+            cv2.line(overlay, origem, destino, tema["secundaria"] if indice % 2 else tema["primaria"], 1, cv2.LINE_AA)
         for linha in range(-18, 19):
             deslocamento = int(linha * 22 + progresso * 210)
             cv2.line(
@@ -1022,6 +1218,8 @@ class DetectorGojo:
         if alpha_flash > 0:
             flash = np.full_like(quadro, 255)
             self._misturar_overlay(quadro, flash, alpha_flash * 0.22)
+            negativo = 255 - quadro
+            self._misturar_overlay(quadro, negativo, alpha_flash * 0.10)
 
         if progresso > 0.18:
             texto_alpha = max(0.0, (1.0 - progresso * 0.72) * intensidade)
@@ -1076,8 +1274,8 @@ class DetectorGojo:
                     novo_tamanho = (int(largura * escala), int(altura * escala))
                     quadro_processamento = cv2.resize(quadro, novo_tamanho, interpolation=cv2.INTER_AREA)
 
-                quadro_rgb = cv2.cvtColor(quadro_processamento, cv2.COLOR_BGR2RGB)
-                resultado = self.hands.process(quadro_rgb)
+                timestamp_ms = int(time.monotonic() * 1000)
+                resultado = self._detectar_maos(quadro_processamento, timestamp_ms)
 
                 score = 0.0
                 score_suave = 0.0
@@ -1087,8 +1285,11 @@ class DetectorGojo:
                 status = "Sem mao"
                 explicacao = "Mostre a mao inteira para a camera."
 
-                if resultado.multi_hand_landmarks:
-                    landmarks = resultado.multi_hand_landmarks[0]
+                if (
+                    (self.usando_tasks and getattr(resultado, "hand_landmarks", None))
+                    or (not self.usando_tasks and getattr(resultado, "multi_hand_landmarks", None))
+                ):
+                    landmarks = resultado.hand_landmarks[0] if self.usando_tasks else resultado.multi_hand_landmarks[0]
                     pontos = self._extrair_pontos(landmarks)
                     pontos_suaves = self._suavizar_pontos(pontos)
                     metricas = self._calcular_metricas_de_pontos(pontos_suaves)
@@ -1101,27 +1302,29 @@ class DetectorGojo:
                     self.historico_pontuacao.append(score)
                     score_suave = media(self.historico_pontuacao)
 
-                    if score > 0.72 and score_suave > 0.67 and partes["cross"] > 0.55:
+                    if score > 0.70 and score_suave > 0.65 and partes["target"] > 0.58 and partes["count"] > 0.70:
                         self.quadros_estaveis += 1
                     else:
                         self.quadros_estaveis = max(0, self.quadros_estaveis - 2)
 
                     estabilidade = limitar(self.quadros_estaveis / 10.0, 0.0, 1.0)
                     pronto = (
-                        score > 0.72
-                        and score_suave > 0.69
+                        score > 0.74
+                        and score_suave > 0.70
                         and estabilidade > 0.58
-                        and partes["cross"] > 0.64
-                        and partes["close"] > 0.58
+                        and partes["target"] > 0.66
+                        and partes["fold"] > 0.60
+                        and partes["count"] > 0.92
+                        and partes["angle"] > 0.56
                         and partes["framing"] > 0.42
                     )
 
                     if self.precisa_rearmar:
-                        if score_suave < 0.34:
+                        if score_suave < 0.26:
                             self.precisa_rearmar = False
                         pronto = False
 
-                    self._atualizar_calibracao(metricas, score)
+                    self._atualizar_calibracao(metricas)
                     if pronto and not self.calibrando and not self.precisa_rearmar:
                         self._ativar_dominio()
 
@@ -1165,10 +1368,13 @@ class DetectorGojo:
                     self._alternar_modo_visual()
                 if tecla in (ord("t"),):
                     self.mostrar_referencia = not self.mostrar_referencia
+                if tecla in (ord("s"),):
+                    self.som_ativo = not self.som_ativo
 
         finally:
             self.hands.close()
-            self.segmentacao.close()
+            if self.segmentacao is not None:
+                self.segmentacao.close()
             self.captura.encerrar()
             cv2.destroyAllWindows()
 
