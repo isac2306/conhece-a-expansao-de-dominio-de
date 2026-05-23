@@ -20,8 +20,11 @@ TITULO_JANELA = "Selo do Gojo | Detector Python"
 CAMINHO_PERFIL = Path(__file__).with_name("perfil_calibracao.json")
 JANELA_SUAVIZACAO = 10
 QUADROS_CALIBRACAO = 24
-DURACAO_EFEITO_SEG = 2.6
+DURACAO_EFEITO_SEG = 2.9
+DURACAO_RESIDUO_SEG = 1.1
 COOLDOWN_SEG = 5.2
+INTERVALO_SEGMENTACAO = 2
+BUFFER_REPLAY_QUADROS = 72
 
 
 def limitar(valor: float, minimo: float, maximo: float) -> float:
@@ -137,6 +140,33 @@ PRESETS_QUALIDADE = {
     "3": PresetQualidade("Fluido", 768, 0.54, 0.16, 1.8),
 }
 
+TEMAS_VISUAIS = {
+    "anime": {
+        "nome": "Anime",
+        "primaria": (255, 228, 162),
+        "secundaria": (138, 238, 255),
+        "acento": (255, 255, 255),
+        "fundo": (12, 14, 22),
+        "cartao": (10, 18, 28),
+        "texto": (244, 248, 252),
+        "texto_fraco": (170, 194, 214),
+        "sucesso": (162, 255, 214),
+        "alerta": (255, 228, 170),
+    },
+    "clean": {
+        "nome": "Clean",
+        "primaria": (238, 238, 238),
+        "secundaria": (176, 230, 239),
+        "acento": (255, 255, 255),
+        "fundo": (18, 24, 30),
+        "cartao": (24, 30, 38),
+        "texto": (245, 248, 250),
+        "texto_fraco": (182, 196, 210),
+        "sucesso": (180, 255, 228),
+        "alerta": (255, 235, 190),
+    },
+}
+
 
 @dataclass
 class MetricasGesto:
@@ -235,6 +265,7 @@ class DetectorGojo:
         self.mp_hands = mp.solutions.hands
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_styles = mp.solutions.drawing_styles
+        self.mp_segmentation = mp.solutions.selfie_segmentation
         self.hands = self.mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=1,
@@ -242,14 +273,18 @@ class DetectorGojo:
             min_detection_confidence=0.58,
             min_tracking_confidence=0.50,
         )
+        self.segmentacao = self.mp_segmentation.SelfieSegmentation(model_selection=1)
         self.captura = CapturaCamera()
         self.historico_pontuacao: deque[float] = deque(maxlen=JANELA_SUAVIZACAO)
+        self.buffer_replay: deque[np.ndarray] = deque(maxlen=BUFFER_REPLAY_QUADROS)
         self.quadros_estaveis = 0
         self.precisa_rearmar = False
         self.cooldown_ate = 0.0
         self.efeito_inicio = 0.0
         self.preset_qualidade_id = "2"
         self.pontos_suavizados: np.ndarray | None = None
+        self.mascara_pessoa: np.ndarray | None = None
+        self.contador_segmentacao = 0
         self.ultimas_metricas: MetricasGesto | None = None
         self.ultimas_landmarks = None
         self.ultimo_resultado: dict[str, object] | None = None
@@ -260,6 +295,10 @@ class DetectorGojo:
         self.fullscreen = False
         self.mostrar_hud = True
         self.melhoria_visual = True
+        self.mostrar_referencia = True
+        self.modo_visual = "anime"
+        self.intensidade_pre_ativacao = 0.0
+        self.cache_vinheta: dict[tuple[int, int], np.ndarray] = {}
 
     def _carregar_perfil(self) -> PerfilGesto:
         if not CAMINHO_PERFIL.exists():
@@ -309,6 +348,199 @@ class DetectorGojo:
         if preset_id not in PRESETS_QUALIDADE:
             return
         self.preset_qualidade_id = preset_id
+        self.pontos_suavizados = None
+
+    def _alternar_modo_visual(self) -> None:
+        self.modo_visual = "clean" if self.modo_visual == "anime" else "anime"
+
+    def _tema_atual(self) -> dict[str, object]:
+        return TEMAS_VISUAIS[self.modo_visual]
+
+    def _misturar_overlay(self, quadro: np.ndarray, overlay: np.ndarray, alpha: float) -> None:
+        cv2.addWeighted(overlay, limitar(alpha, 0.0, 1.0), quadro, 1.0 - limitar(alpha, 0.0, 1.0), 0, quadro)
+
+    def _obter_vinheta(self, altura: int, largura: int) -> np.ndarray:
+        chave = (altura, largura)
+        if chave in self.cache_vinheta:
+            return self.cache_vinheta[chave]
+
+        y = np.linspace(-1.0, 1.0, altura, dtype=np.float32)[:, None]
+        x = np.linspace(-1.0, 1.0, largura, dtype=np.float32)[None, :]
+        distancia_centro = np.sqrt(x * x + y * y)
+        vinheta = np.clip((distancia_centro - 0.08) / 1.2, 0.0, 1.0)
+        self.cache_vinheta[chave] = vinheta
+        return vinheta
+
+    def _aplicar_vinheta(self, quadro: np.ndarray, intensidade: float) -> None:
+        if intensidade <= 0.0:
+            return
+        altura, largura = quadro.shape[:2]
+        vinheta = self._obter_vinheta(altura, largura)
+        fator = 1.0 - vinheta[..., None] * (0.48 * limitar(intensidade, 0.0, 1.0))
+        quadro[:] = np.clip(quadro.astype(np.float32) * fator, 0, 255).astype(np.uint8)
+
+    def _aplicar_aberracao_cromatica(self, quadro: np.ndarray, intensidade: float) -> np.ndarray:
+        deslocamento = max(0, int(round(8 * intensidade)))
+        if deslocamento <= 0:
+            return quadro
+
+        azul, verde, vermelho = cv2.split(quadro)
+        azul = np.roll(azul, -deslocamento, axis=1)
+        vermelho = np.roll(vermelho, deslocamento, axis=1)
+        return cv2.merge((azul, verde, vermelho))
+
+    def _aplicar_zoom_pulso(self, quadro: np.ndarray, intensidade: float) -> np.ndarray:
+        intensidade = limitar(intensidade, 0.0, 1.0)
+        if intensidade <= 0.0:
+            return quadro
+
+        altura, largura = quadro.shape[:2]
+        corte = int(min(altura, largura) * 0.06 * intensidade)
+        if corte <= 1 or corte * 2 >= min(altura, largura):
+            return quadro
+
+        zoom = quadro[corte : altura - corte, corte : largura - corte]
+        return cv2.resize(zoom, (largura, altura), interpolation=cv2.INTER_LINEAR)
+
+    def _atualizar_buffer_replay(self, quadro: np.ndarray) -> None:
+        self.buffer_replay.append(quadro.copy())
+
+    def _obter_quadro_replay(self, progresso: float) -> np.ndarray | None:
+        if not self.buffer_replay:
+            return None
+
+        indice = int(limitar(progresso, 0.0, 0.999) * len(self.buffer_replay))
+        indice = max(1, min(indice, len(self.buffer_replay)))
+        return self.buffer_replay[-indice].copy()
+
+    def _atualizar_mascara_pessoa(self, quadro: np.ndarray, forcar: bool = False) -> None:
+        precisa_segmentar = forcar or self.efeito_inicio or self.intensidade_pre_ativacao > 0.26
+        if not precisa_segmentar:
+            return
+
+        self.contador_segmentacao = (self.contador_segmentacao + 1) % INTERVALO_SEGMENTACAO
+        if self.contador_segmentacao != 0 and self.mascara_pessoa is not None and not forcar:
+            return
+
+        altura, largura = quadro.shape[:2]
+        largura_seg = 448
+        escala = min(1.0, largura_seg / float(largura))
+        quadro_seg = quadro
+        if escala < 1.0:
+            quadro_seg = cv2.resize(
+                quadro,
+                (int(largura * escala), int(altura * escala)),
+                interpolation=cv2.INTER_AREA,
+            )
+
+        resultado = self.segmentacao.process(cv2.cvtColor(quadro_seg, cv2.COLOR_BGR2RGB))
+        if resultado.segmentation_mask is None:
+            return
+
+        mascara = cv2.GaussianBlur(resultado.segmentation_mask, (0, 0), 2.8)
+        if escala < 1.0:
+            mascara = cv2.resize(mascara, (largura, altura), interpolation=cv2.INTER_CUBIC)
+        mascara = np.clip((mascara - 0.10) / 0.82, 0.0, 1.0).astype(np.float32)
+        self.mascara_pessoa = mascara
+
+    def _gerar_fundo_dominio(
+        self,
+        altura: int,
+        largura: int,
+        progresso: float,
+        intensidade: float,
+        centro_relativo: tuple[float, float],
+    ) -> np.ndarray:
+        tema = self._tema_atual()
+        escala = 2
+        altura_baixa = max(220, altura // escala)
+        largura_baixa = max(360, largura // escala)
+        fundo = np.zeros((altura_baixa, largura_baixa, 3), dtype=np.uint8)
+        fundo[:] = (8, 6, 18) if self.modo_visual == "anime" else (18, 20, 26)
+
+        centro = (
+            int(centro_relativo[0] * largura_baixa),
+            int(centro_relativo[1] * altura_baixa),
+        )
+        horizonte_y = int(altura_baixa * 0.44)
+        for indice, cor in enumerate(((32, 18, 92), (96, 46, 150), (126, 196, 255), (255, 232, 160))):
+            angulo = progresso * 3.2 + indice * 1.1
+            raio = int(min(altura_baixa, largura_baixa) * (0.12 + indice * 0.05))
+            deslocamento_x = int(math.cos(angulo) * largura_baixa * 0.14 * (0.5 + indice * 0.16))
+            deslocamento_y = int(math.sin(angulo * 1.2) * altura_baixa * 0.08 * (0.5 + indice * 0.12))
+            ponto = (centro[0] + deslocamento_x, centro[1] + deslocamento_y)
+            cv2.circle(fundo, ponto, raio, cor, -1, cv2.LINE_AA)
+
+        fundo = cv2.GaussianBlur(fundo, (0, 0), 24)
+
+        for indice in range(-9, 10):
+            base_x = int(centro[0] + indice * largura_baixa * 0.12)
+            topo_x = int(centro[0] + indice * largura_baixa * 0.018)
+            cor = tema["secundaria"] if indice % 3 else tema["primaria"]
+            cv2.line(
+                fundo,
+                (base_x, altura_baixa),
+                (topo_x, horizonte_y),
+                cor,
+                1,
+                cv2.LINE_AA,
+            )
+
+        for indice in range(15):
+            curva = (indice / 14.0) ** 1.8
+            y = horizonte_y + int((altura_baixa - horizonte_y) * curva)
+            deslocamento = int((progresso * 12 + indice * 2) * (0.4 + curva))
+            cv2.line(
+                fundo,
+                (0, y),
+                (largura_baixa, min(altura_baixa - 1, y + deslocamento)),
+                (58, 102, 166),
+                1,
+                cv2.LINE_AA,
+            )
+
+        for indice in range(80):
+            base = indice * 0.31 + progresso * 2.0
+            px = int((math.sin(base * 1.7) * 0.5 + 0.5) * largura_baixa)
+            py = int((math.cos(base * 2.3 + indice) * 0.5 + 0.5) * altura_baixa * 0.78)
+            raio = 1 + (indice % 3 == 0)
+            brilho = 140 + int(80 * math.sin(base * 2.1))
+            cor = (brilho, min(255, brilho + 30), 255)
+            cv2.circle(fundo, (px, py), raio, cor, -1, cv2.LINE_AA)
+
+        for indice in range(22):
+            angulo = progresso * 4.6 + indice * (math.pi * 2.0 / 22.0)
+            distancia_orbita = min(largura_baixa, altura_baixa) * (0.16 + (indice % 4) * 0.03)
+            px = centro[0] + int(math.cos(angulo) * distancia_orbita)
+            py = centro[1] + int(math.sin(angulo * 1.2) * distancia_orbita * 0.58)
+            cv2.circle(fundo, (px, py), 2, tema["primaria"], -1, cv2.LINE_AA)
+
+        cv2.circle(
+            fundo,
+            centro,
+            int(min(largura_baixa, altura_baixa) * (0.08 + 0.05 * intensidade)),
+            (255, 255, 255),
+            -1,
+            cv2.LINE_AA,
+        )
+
+        fundo = cv2.GaussianBlur(fundo, (0, 0), 2.2)
+        return cv2.resize(fundo, (largura, altura), interpolation=cv2.INTER_CUBIC)
+
+    def _compor_pessoa_e_fundo(self, quadro: np.ndarray, fundo: np.ndarray, intensidade: float) -> np.ndarray:
+        if self.mascara_pessoa is None:
+            return cv2.addWeighted(fundo, 0.68, quadro, 0.58, 0)
+
+        mascara = np.clip(self.mascara_pessoa[..., None], 0.0, 1.0)
+        composto = quadro.astype(np.float32) * mascara + fundo.astype(np.float32) * (1.0 - mascara)
+        composto = np.clip(composto, 0, 255).astype(np.uint8)
+
+        borda = cv2.Canny((self.mascara_pessoa * 255).astype(np.uint8), 60, 140)
+        borda = cv2.GaussianBlur(borda, (0, 0), 1.0)
+        if np.any(borda):
+            brilho = np.dstack([borda * 0.36, borda * 0.72, borda]).astype(np.float32)
+            composto = np.clip(composto.astype(np.float32) + brilho * intensidade * 0.22, 0, 255).astype(np.uint8)
+        return composto
 
     def _calcular_metricas_de_pontos(self, pontos_array: np.ndarray) -> MetricasGesto:
         pontos = [tuple(map(float, ponto)) for ponto in pontos_array]
@@ -471,29 +703,168 @@ class DetectorGojo:
         self.efeito_inicio = agora
 
     def _desenhar_overlay_mao(self, quadro: np.ndarray, pontos_suaves: np.ndarray, score: float) -> None:
+        if self.ultimas_metricas is None:
+            return
+
+        tema = self._tema_atual()
         gesture_strong = score > 0.72
         altura, largura = quadro.shape[:2]
         pontos_px = [(int(x * largura), int(y * altura)) for x, y in pontos_suaves]
-        cor_linhas = (255, 216, 128) if gesture_strong else (143, 239, 255)
-        cor_pontos = (255, 248, 240) if gesture_strong else (210, 248, 255)
+        cor_linhas = tema["primaria"] if gesture_strong else tema["secundaria"]
+        cor_pontos = tema["acento"]
 
+        brilho = np.zeros_like(quadro)
+        linhas = np.zeros_like(quadro)
         for origem, destino in self.mp_hands.HAND_CONNECTIONS:
-            cv2.line(quadro, pontos_px[origem], pontos_px[destino], cor_linhas, 3, cv2.LINE_AA)
+            cv2.line(brilho, pontos_px[origem], pontos_px[destino], cor_linhas, 8, cv2.LINE_AA)
+            cv2.line(linhas, pontos_px[origem], pontos_px[destino], cor_linhas, 2, cv2.LINE_AA)
+
+        brilho = cv2.GaussianBlur(brilho, (0, 0), 4.8)
+        self._misturar_overlay(quadro, brilho, 0.28 if not gesture_strong else 0.36)
+        cv2.addWeighted(quadro, 1.0, linhas, 0.95, 0, quadro)
 
         for indice, ponto in enumerate(pontos_px):
-            raio = 6 if indice in (8, 12) else 4
+            raio = 7 if indice in (8, 12) else 4
             cv2.circle(quadro, ponto, raio, cor_pontos, -1, cv2.LINE_AA)
 
         centro = (
             int(self.ultimas_metricas.center_x * largura),
             int(self.ultimas_metricas.center_y * altura),
         )
-        cor = (120, 216, 255) if not gesture_strong else (128, 216, 255)
-        cv2.circle(quadro, centro, 46, cor, 2, lineType=cv2.LINE_AA)
+        cv2.circle(quadro, centro, 52, cor_linhas, 2, lineType=cv2.LINE_AA)
+        cv2.circle(quadro, centro, 72, cor_linhas, 1, lineType=cv2.LINE_AA)
 
         ponta_indicador = pontos_px[8]
         ponta_medio = pontos_px[12]
-        cv2.line(quadro, ponta_indicador, ponta_medio, (255, 240, 190), 2, lineType=cv2.LINE_AA)
+        cv2.line(quadro, ponta_indicador, ponta_medio, tema["alerta"], 2, lineType=cv2.LINE_AA)
+
+    def _desenhar_chip(
+        self,
+        quadro: np.ndarray,
+        texto: str,
+        posicao: tuple[int, int],
+        cor_borda: tuple[int, int, int],
+        cor_texto: tuple[int, int, int],
+        cor_fundo: tuple[int, int, int],
+    ) -> int:
+        x, y = posicao
+        (largura_texto, altura_texto), _ = cv2.getTextSize(texto, cv2.FONT_HERSHEY_SIMPLEX, 0.56, 1)
+        largura_caixa = largura_texto + 28
+        altura_caixa = altura_texto + 18
+        overlay = quadro.copy()
+        cv2.rectangle(overlay, (x, y), (x + largura_caixa, y + altura_caixa), cor_fundo, -1, cv2.LINE_AA)
+        cv2.rectangle(overlay, (x, y), (x + largura_caixa, y + altura_caixa), cor_borda, 1, cv2.LINE_AA)
+        self._misturar_overlay(quadro, overlay, 0.64)
+        cv2.putText(
+            quadro,
+            texto,
+            (x + 14, y + altura_caixa - 7),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.56,
+            cor_texto,
+            1,
+            cv2.LINE_AA,
+        )
+        return x + largura_caixa + 10
+
+    def _desenhar_barra(
+        self,
+        quadro: np.ndarray,
+        rotulo: str,
+        valor: float,
+        posicao: tuple[int, int],
+        largura: int,
+        cor_barra: tuple[int, int, int],
+        cor_texto: tuple[int, int, int],
+    ) -> None:
+        x, y = posicao
+        valor = limitar(valor, 0.0, 1.0)
+        cv2.putText(quadro, rotulo, (x, y - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.52, cor_texto, 1, cv2.LINE_AA)
+        cv2.rectangle(quadro, (x, y), (x + largura, y + 12), (34, 42, 54), -1, cv2.LINE_AA)
+        cv2.rectangle(quadro, (x, y), (x + largura, y + 12), (88, 106, 122), 1, cv2.LINE_AA)
+        cv2.rectangle(quadro, (x + 2, y + 2), (x + 2 + int((largura - 4) * valor), y + 10), cor_barra, -1, cv2.LINE_AA)
+
+    def _desenhar_guia_enquadramento(self, quadro: np.ndarray, intensidade: float, pronto: bool) -> None:
+        tema = self._tema_atual()
+        altura, largura = quadro.shape[:2]
+        centro = (largura // 2, int(altura * 0.5))
+        cor = tema["sucesso"] if pronto else tema["secundaria"]
+        overlay = quadro.copy()
+        raio_x = int(largura * 0.16)
+        raio_y = int(altura * 0.24)
+        cv2.ellipse(overlay, centro, (raio_x, raio_y), 0, 0, 360, cor, 2, cv2.LINE_AA)
+        cv2.ellipse(overlay, centro, (raio_x + 22, raio_y + 22), 0, 18, 162, cor, 1, cv2.LINE_AA)
+        cv2.ellipse(overlay, centro, (raio_x + 22, raio_y + 22), 0, 198, 342, cor, 1, cv2.LINE_AA)
+        cv2.line(overlay, (centro[0] - 24, centro[1]), (centro[0] + 24, centro[1]), cor, 1, cv2.LINE_AA)
+        cv2.line(overlay, (centro[0], centro[1] - 24), (centro[0], centro[1] + 24), cor, 1, cv2.LINE_AA)
+        self._misturar_overlay(quadro, overlay, 0.12 + intensidade * 0.18)
+
+    def _desenhar_referencia_selo(self, quadro: np.ndarray) -> None:
+        if not self.mostrar_referencia:
+            return
+
+        tema = self._tema_atual()
+        altura, largura = quadro.shape[:2]
+        painel_largura = min(300, max(240, int(largura * 0.19)))
+        painel_altura = min(280, max(220, int(altura * 0.28)))
+        x1 = largura - painel_largura - 28
+        y1 = 30
+        x2 = largura - 28
+        y2 = y1 + painel_altura
+
+        overlay = quadro.copy()
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), tema["cartao"], -1, cv2.LINE_AA)
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), tema["secundaria"], 1, cv2.LINE_AA)
+        self._misturar_overlay(quadro, overlay, 0.56)
+
+        cv2.putText(quadro, "REFERENCIA DO SELO", (x1 + 16, y1 + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.58, tema["texto"], 1, cv2.LINE_AA)
+        cv2.putText(quadro, "T alterna", (x1 + 16, y1 + 52), cv2.FONT_HERSHEY_SIMPLEX, 0.48, tema["texto_fraco"], 1, cv2.LINE_AA)
+
+        origem_x = x1 + painel_largura // 2
+        origem_y = y1 + painel_altura - 40
+        escala = painel_altura / 180.0
+        pontos = {
+            "pulso": (origem_x, int(origem_y)),
+            "palma": (origem_x - int(8 * escala), int(origem_y - 46 * escala)),
+            "indicador_base": (origem_x - int(18 * escala), int(origem_y - 68 * escala)),
+            "indicador_meio": (origem_x - int(6 * escala), int(origem_y - 104 * escala)),
+            "indicador_ponta": (origem_x + int(18 * escala), int(origem_y - 142 * escala)),
+            "medio_base": (origem_x + int(14 * escala), int(origem_y - 66 * escala)),
+            "medio_meio": (origem_x - int(2 * escala), int(origem_y - 112 * escala)),
+            "medio_ponta": (origem_x - int(22 * escala), int(origem_y - 146 * escala)),
+            "anelar": (origem_x + int(34 * escala), int(origem_y - 84 * escala)),
+            "mindinho": (origem_x + int(54 * escala), int(origem_y - 64 * escala)),
+            "polegar": (origem_x - int(40 * escala), int(origem_y - 54 * escala)),
+        }
+        linhas = [
+            ("pulso", "palma"),
+            ("palma", "indicador_base"),
+            ("indicador_base", "indicador_meio"),
+            ("indicador_meio", "indicador_ponta"),
+            ("palma", "medio_base"),
+            ("medio_base", "medio_meio"),
+            ("medio_meio", "medio_ponta"),
+            ("palma", "anelar"),
+            ("palma", "mindinho"),
+            ("palma", "polegar"),
+        ]
+        for origem, destino in linhas:
+            cv2.line(quadro, pontos[origem], pontos[destino], tema["secundaria"], 2, cv2.LINE_AA)
+        cv2.line(quadro, pontos["indicador_ponta"], pontos["medio_ponta"], tema["alerta"], 2, cv2.LINE_AA)
+        for nome, ponto in pontos.items():
+            raio = 6 if "ponta" in nome else 4
+            cv2.circle(quadro, ponto, raio, tema["acento"], -1, cv2.LINE_AA)
+
+        cv2.putText(
+            quadro,
+            "Cruze indicador e medio.",
+            (x1 + 16, y2 - 18),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.46,
+            tema["texto_fraco"],
+            1,
+            cv2.LINE_AA,
+        )
 
     def _desenhar_hud(
         self,
@@ -505,109 +876,177 @@ class DetectorGojo:
         pronto: bool,
         status: str,
         explicacao: str,
+        partes: dict[str, float] | None,
     ) -> None:
+        tema = self._tema_atual()
+        framing = partes["framing"] if partes else 0.0
+        self._desenhar_guia_enquadramento(quadro, max(0.12, 1.0 - framing), pronto)
+
+        if self.mostrar_referencia:
+            self._desenhar_referencia_selo(quadro)
         if not self.mostrar_hud:
             return
 
         altura, largura = quadro.shape[:2]
-        cv2.rectangle(quadro, (24, 20), (560, 182), (6, 16, 24), -1)
-        cv2.rectangle(quadro, (24, 20), (560, 182), (66, 110, 138), 1)
+        chip_x = 26
+        chip_y = 24
+        chip_x = self._desenhar_chip(quadro, "SELO DO GOJO", (chip_x, chip_y), tema["primaria"], tema["texto"], tema["cartao"])
+        chip_x = self._desenhar_chip(quadro, status.upper(), (chip_x, chip_y), tema["secundaria"], tema["texto"], tema["cartao"])
 
-        textos = [
-            ("SELO DO GOJO", 0.9, (250, 248, 242)),
-            (f"Status: {status}", 0.72, (230, 240, 246)),
-            (f"Score bruto: {score * 100:05.1f}%   Score suave: {score_suave * 100:05.1f}%", 0.66, (196, 222, 236)),
-            (f"Estabilidade: {estabilidade * 100:05.1f}%   FPS medio: {fps:05.1f}", 0.66, (196, 222, 236)),
-            (
-                f"Resolucao camera: {largura}x{altura}   Preset: {self._preset_atual().nome}"
-                f"   Visual: {'ON' if self.melhoria_visual else 'OFF'}",
-                0.66,
-                (196, 222, 236),
-            ),
-            (explicacao, 0.64, (255, 235, 188) if not pronto else (158, 255, 208)),
-        ]
+        chip_direita = largura - 26
+        for texto in (self._preset_atual().nome, tema["nome"], f"{fps:04.1f} FPS"):
+            (largura_texto, _), _ = cv2.getTextSize(texto, cv2.FONT_HERSHEY_SIMPLEX, 0.56, 1)
+            chip_direita -= largura_texto + 38
+            self._desenhar_chip(quadro, texto, (chip_direita, chip_y), tema["secundaria"], tema["texto"], tema["cartao"])
+            chip_direita -= 10
 
-        y = 52
-        for texto, escala, cor in textos:
-            cv2.putText(quadro, texto, (42, y), cv2.FONT_HERSHEY_SIMPLEX, escala, cor, 2, cv2.LINE_AA)
-            y += 24
+        painel_x = 28
+        painel_y = altura - 152
+        painel_largura = min(540, largura - 56)
+        overlay = quadro.copy()
+        cv2.rectangle(overlay, (painel_x, painel_y), (painel_x + painel_largura, altura - 24), tema["cartao"], -1, cv2.LINE_AA)
+        cv2.rectangle(overlay, (painel_x, painel_y), (painel_x + painel_largura, altura - 24), tema["secundaria"], 1, cv2.LINE_AA)
+        self._misturar_overlay(quadro, overlay, 0.58)
 
-        dicas = "1 detalhe  2 balanceado  3 fluido  V visual  C calibrar  R resetar  F fullscreen  H HUD  Q sair"
+        cv2.putText(quadro, explicacao, (painel_x + 18, painel_y + 34), cv2.FONT_HERSHEY_SIMPLEX, 0.60, tema["alerta"] if not pronto else tema["sucesso"], 1, cv2.LINE_AA)
+        self._desenhar_barra(quadro, "Confianca do selo", score_suave, (painel_x + 18, painel_y + 56), 238, tema["primaria"], tema["texto"])
+        self._desenhar_barra(quadro, "Estabilidade", estabilidade, (painel_x + 18, painel_y + 92), 238, tema["secundaria"], tema["texto"])
+        self._desenhar_barra(quadro, "Enquadramento", framing, (painel_x + 280, painel_y + 56), 220, tema["sucesso"], tema["texto"])
+
         cv2.putText(
             quadro,
-            dicas,
-            (42, 170),
+            f"Score {score * 100:05.1f}%  |  Camera {largura}x{altura}  |  Visual {'ON' if self.melhoria_visual else 'OFF'}",
+            (painel_x + 18, painel_y + 126),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.56,
-            (168, 196, 214),
+            0.50,
+            tema["texto_fraco"],
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            quadro,
+            "1-3 preset  M modo  V visual  T referencia  C calibrar  R resetar  F fullscreen  H HUD  Q sair",
+            (painel_x + 18, altura - 34),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48,
+            tema["texto_fraco"],
             1,
             cv2.LINE_AA,
         )
 
-    def _desenhar_efeito(self, quadro: np.ndarray) -> None:
+    def _desenhar_pre_ativacao(self, quadro: np.ndarray, intensidade: float) -> None:
+        if intensidade <= 0.02:
+            return
+
+        tema = self._tema_atual()
+        altura, largura = quadro.shape[:2]
+        if self.ultimas_metricas is not None:
+            centro = (int(self.ultimas_metricas.center_x * largura), int(self.ultimas_metricas.center_y * altura))
+        else:
+            centro = (largura // 2, int(altura * 0.46))
+
+        overlay = quadro.copy()
+        cv2.circle(overlay, centro, int(min(largura, altura) * (0.10 + intensidade * 0.10)), tema["primaria"], 2, cv2.LINE_AA)
+        cv2.circle(overlay, centro, int(min(largura, altura) * (0.18 + intensidade * 0.12)), tema["secundaria"], 1, cv2.LINE_AA)
+        for indice in range(10):
+            angulo = intensidade * 3.6 + indice * (math.pi * 2.0 / 10.0)
+            raio = min(largura, altura) * (0.12 + intensidade * 0.24)
+            destino = (
+                centro[0] + int(math.cos(angulo) * raio),
+                centro[1] + int(math.sin(angulo) * raio),
+            )
+            cv2.line(overlay, centro, destino, tema["secundaria"], 1, cv2.LINE_AA)
+        self._misturar_overlay(quadro, overlay, 0.10 + intensidade * 0.16)
+        self._aplicar_vinheta(quadro, 0.16 + intensidade * 0.22)
+
+    def _desenhar_efeito(self, quadro: np.ndarray, score_suave: float, estabilidade: float) -> None:
+        intensidade_meta = limitar((score_suave - 0.44) / 0.30, 0.0, 1.0) * max(estabilidade, 0.35)
+        self.intensidade_pre_ativacao = self.intensidade_pre_ativacao * 0.82 + intensidade_meta * 0.18
+        if self.intensidade_pre_ativacao > 0.02 and not self.efeito_inicio and not self.calibrando:
+            self._desenhar_pre_ativacao(quadro, self.intensidade_pre_ativacao)
+            self._atualizar_mascara_pessoa(quadro)
+
         if not self.efeito_inicio:
             return
 
         agora = time.perf_counter()
+        duracao_total = DURACAO_EFEITO_SEG + DURACAO_RESIDUO_SEG
         decorrido = agora - self.efeito_inicio
-        if decorrido < 0 or decorrido > DURACAO_EFEITO_SEG:
+        if decorrido < 0:
+            return
+        if decorrido > duracao_total:
+            self.efeito_inicio = 0.0
             return
 
+        tema = self._tema_atual()
         progresso = limitar(decorrido / DURACAO_EFEITO_SEG, 0.0, 1.0)
+        residuo = limitar((decorrido - DURACAO_EFEITO_SEG) / DURACAO_RESIDUO_SEG, 0.0, 1.0)
+        intensidade = 1.0 if decorrido <= DURACAO_EFEITO_SEG else 1.0 - residuo
         altura, largura = quadro.shape[:2]
-        centro_x = largura // 2
-        centro_y = int(altura * 0.46)
+        centro_relativo = (
+            self.ultimas_metricas.center_x if self.ultimas_metricas else 0.5,
+            self.ultimas_metricas.center_y if self.ultimas_metricas else 0.46,
+        )
 
+        self._atualizar_mascara_pessoa(quadro, forcar=decorrido <= DURACAO_EFEITO_SEG)
+        fundo = self._gerar_fundo_dominio(altura, largura, progresso, intensidade, centro_relativo)
+        quadro[:] = self._compor_pessoa_e_fundo(quadro, fundo, intensidade)
+
+        replay = self._obter_quadro_replay(1.0 - progresso * 0.9)
+        if replay is not None and progresso > 0.48:
+            replay = self._aplicar_aberracao_cromatica(replay, 0.15 + intensidade * 0.12)
+            self._misturar_overlay(quadro, replay, 0.05 + (1.0 - progresso) * 0.14)
+
+        centro = (int(centro_relativo[0] * largura), int(centro_relativo[1] * altura))
         overlay = quadro.copy()
-        alpha_flash = max(0.0, 0.8 - progresso * 1.4)
-        alpha_linhas = max(0.0, 0.28 - progresso * 0.18)
-
-        for linha in range(-16, 17):
-            deslocamento = int(linha * 24 + progresso * 190)
+        raio = int(min(largura, altura) * (0.12 + progresso * 0.36))
+        cv2.circle(overlay, centro, raio, tema["primaria"], 4, cv2.LINE_AA)
+        cv2.circle(overlay, centro, max(14, int(raio * 0.22)), tema["acento"], -1, cv2.LINE_AA)
+        for linha in range(-18, 19):
+            deslocamento = int(linha * 22 + progresso * 210)
             cv2.line(
                 overlay,
-                (0, centro_y + deslocamento),
-                (largura, centro_y + deslocamento + int(progresso * 18)),
-                (255, 240, 200),
+                (0, centro[1] + deslocamento),
+                (largura, centro[1] + deslocamento + int(progresso * 20)),
+                tema["primaria"],
                 1,
                 cv2.LINE_AA,
             )
+        self._misturar_overlay(quadro, overlay, 0.12 + intensidade * 0.16)
 
-        raio = int(largura * (0.1 + progresso * 0.48))
-        cv2.circle(overlay, (centro_x, centro_y), raio, (255, 216, 128), 4, cv2.LINE_AA)
-        cv2.circle(overlay, (centro_x, centro_y), max(18, int(raio * 0.18)), (255, 255, 255), -1, cv2.LINE_AA)
+        quadro[:] = self._aplicar_zoom_pulso(quadro, math.sin(progresso * math.pi) * 0.18 * intensidade)
+        quadro[:] = self._aplicar_aberracao_cromatica(quadro, 0.08 + intensidade * 0.18)
+        self._aplicar_vinheta(quadro, 0.34 + intensidade * 0.34)
 
-        cv2.addWeighted(overlay, alpha_linhas, quadro, 1.0 - alpha_linhas, 0, quadro)
-
+        alpha_flash = max(0.0, 1.0 - progresso * 5.2)
         if alpha_flash > 0:
-            mascarado = quadro.copy()
-            cv2.circle(mascarado, (centro_x, centro_y), int(largura * 0.38), (255, 255, 255), -1, cv2.LINE_AA)
-            cv2.addWeighted(mascarado, alpha_flash * 0.16, quadro, 1.0 - alpha_flash * 0.16, 0, quadro)
+            flash = np.full_like(quadro, 255)
+            self._misturar_overlay(quadro, flash, alpha_flash * 0.22)
 
-        if progresso > 0.15:
-            texto_alpha = max(0.0, 1.0 - progresso * 0.7)
+        if progresso > 0.18:
+            texto_alpha = max(0.0, (1.0 - progresso * 0.72) * intensidade)
             texto_overlay = quadro.copy()
             cv2.putText(
                 texto_overlay,
                 "DOMAIN EXPANSION",
-                (centro_x - 170, centro_y + 54),
+                (centro[0] - 176, centro[1] + 60),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.92,
-                (255, 255, 255),
+                tema["acento"],
                 2,
                 cv2.LINE_AA,
             )
             cv2.putText(
                 texto_overlay,
                 "UNLIMITED VOID",
-                (centro_x - 220, centro_y + 108),
+                (centro[0] - 226, centro[1] + 118),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1.55,
-                (255, 255, 255),
+                1.58,
+                tema["acento"],
                 3,
                 cv2.LINE_AA,
             )
-            cv2.addWeighted(texto_overlay, texto_alpha, quadro, 1.0 - texto_alpha, 0, quadro)
+            self._misturar_overlay(quadro, texto_overlay, texto_alpha * 0.64)
 
     def _alternar_fullscreen(self) -> None:
         self.fullscreen = not self.fullscreen
@@ -643,6 +1082,7 @@ class DetectorGojo:
                 score = 0.0
                 score_suave = 0.0
                 estabilidade = limitar(self.quadros_estaveis / 10.0, 0.0, 1.0)
+                partes: dict[str, float] | None = None
                 pronto = False
                 status = "Sem mao"
                 explicacao = "Mostre a mao inteira para a camera."
@@ -696,9 +1136,12 @@ class DetectorGojo:
                     self.historico_pontuacao.clear()
                     self.quadros_estaveis = max(0, self.quadros_estaveis - 2)
 
+                if not self.efeito_inicio:
+                    self._atualizar_buffer_replay(quadro_saida)
+
                 fps = self._atualizar_fps()
-                self._desenhar_efeito(quadro_saida)
-                self._desenhar_hud(quadro_saida, fps, score, score_suave, estabilidade, pronto, status, explicacao)
+                self._desenhar_efeito(quadro_saida, score_suave, estabilidade)
+                self._desenhar_hud(quadro_saida, fps, score, score_suave, estabilidade, pronto, status, explicacao, partes)
 
                 cv2.imshow(TITULO_JANELA, quadro_saida)
                 tecla = cv2.waitKey(1) & 0xFF
@@ -718,9 +1161,14 @@ class DetectorGojo:
                     self._alternar_preset(chr(tecla))
                 if tecla in (ord("v"),):
                     self.melhoria_visual = not self.melhoria_visual
+                if tecla in (ord("m"),):
+                    self._alternar_modo_visual()
+                if tecla in (ord("t"),):
+                    self.mostrar_referencia = not self.mostrar_referencia
 
         finally:
             self.hands.close()
+            self.segmentacao.close()
             self.captura.encerrar()
             cv2.destroyAllWindows()
 
