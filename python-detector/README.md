@@ -17,6 +17,9 @@ Tambem entrou um refinamento mais forte de leitura:
 - `suavizacao temporal` dos pontos da mao para reduzir tremida
 - `presets de qualidade` para escolher entre detalhe e fluidez
 - `melhoria visual` com contraste local e nitidez opcional
+- `HUD cinematico` com chips, barras e guia de enquadramento
+- `referencia do selo` desenhada na propria tela
+- `expansao de dominio` com pre-ativacao, flash, replay e fundo cosmico atras de voce
 
 ## Fluxo recomendado
 
@@ -34,7 +37,9 @@ Tambem entrou um refinamento mais forte de leitura:
 - `1`: preset `Detalhe`
 - `2`: preset `Balanceado`
 - `3`: preset `Fluido`
+- `M`: alternar entre visual `Anime` e `Clean`
 - `V`: ligar ou desligar melhoria visual
+- `T`: mostrar ou esconder a referencia do selo
 - `C`: iniciar ou parar calibracao
 - `R`: limpar calibracao
 
@@ -44,6 +49,8 @@ Tambem entrou um refinamento mais forte de leitura:
 - `Score suave`: deve subir e se manter
 - `Estabilidade`: deve crescer enquanto voce segura o selo
 - `Presenca no quadro`: deve melhorar quando a mao fica mais proxima e inteira na tela
+- `Guia central`: ajuda a manter a mao no lugar ideal para o detector
+- `Referencia do selo`: serve como aproximacao visual do gesto do Gojo
 
 ## Notas de qualidade
 
@@ -53,6 +60,7 @@ Tambem entrou um refinamento mais forte de leitura:
 - `Balanceado` e o ponto de partida recomendado.
 - `Fluido` sacrifica um pouco do detalhe para ganhar resposta em maquinas ou cameras mais fracas.
 - O desenho na tela continua usando o quadro de alta resolucao da camera.
+- A segmentacao da pessoa so entra forte durante a expansao para colocar o fundo do dominio atras de voce sem pesar tanto o rastreio.
 
 ## Se o MediaPipe nao instalar
 
