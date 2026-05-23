@@ -18,7 +18,6 @@ import numpy as np
 
 TITULO_JANELA = "Selo do Gojo | Detector Python"
 CAMINHO_PERFIL = Path(__file__).with_name("perfil_calibracao.json")
-LARGURA_PROCESSAMENTO = 960
 JANELA_SUAVIZACAO = 10
 QUADROS_CALIBRACAO = 24
 DURACAO_EFEITO_SEG = 2.6
@@ -123,6 +122,22 @@ class PerfilGesto:
     updated_at: float = 0.0
 
 
+@dataclass(frozen=True)
+class PresetQualidade:
+    nome: str
+    largura_processamento: int
+    suavizacao_pontos: float
+    nitidez: float
+    clahe_clip: float
+
+
+PRESETS_QUALIDADE = {
+    "1": PresetQualidade("Detalhe", 1280, 0.70, 0.32, 2.6),
+    "2": PresetQualidade("Balanceado", 960, 0.62, 0.24, 2.2),
+    "3": PresetQualidade("Fluido", 768, 0.54, 0.16, 1.8),
+}
+
+
 @dataclass
 class MetricasGesto:
     hand_scale: float
@@ -157,6 +172,15 @@ class CapturaCamera:
         self._captura.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self._captura.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         self._captura.set(cv2.CAP_PROP_FPS, 60)
+        for nome_prop, valor in (
+            ("CAP_PROP_AUTOFOCUS", 1),
+            ("CAP_PROP_AUTO_WB", 1),
+            ("CAP_PROP_SHARPNESS", 180),
+            ("CAP_PROP_CONTRAST", 40),
+            ("CAP_PROP_SATURATION", 48),
+        ):
+            if hasattr(cv2, nome_prop):
+                self._captura.set(getattr(cv2, nome_prop), valor)
         for largura, altura in ((1920, 1080), (1600, 900), (1280, 720), (960, 540)):
             self._captura.set(cv2.CAP_PROP_FRAME_WIDTH, largura)
             self._captura.set(cv2.CAP_PROP_FRAME_HEIGHT, altura)
@@ -224,6 +248,8 @@ class DetectorGojo:
         self.precisa_rearmar = False
         self.cooldown_ate = 0.0
         self.efeito_inicio = 0.0
+        self.preset_qualidade_id = "2"
+        self.pontos_suavizados: np.ndarray | None = None
         self.ultimas_metricas: MetricasGesto | None = None
         self.ultimas_landmarks = None
         self.ultimo_resultado: dict[str, object] | None = None
@@ -233,6 +259,7 @@ class DetectorGojo:
         self.ultimo_tempo_fps = time.perf_counter()
         self.fullscreen = False
         self.mostrar_hud = True
+        self.melhoria_visual = True
 
     def _carregar_perfil(self) -> PerfilGesto:
         if not CAMINHO_PERFIL.exists():
@@ -251,8 +278,40 @@ class DetectorGojo:
         if CAMINHO_PERFIL.exists():
             CAMINHO_PERFIL.unlink()
 
-    def _calcular_metricas(self, landmarks) -> MetricasGesto:
-        pontos = [(lm.x, lm.y) for lm in landmarks.landmark]
+    def _preset_atual(self) -> PresetQualidade:
+        return PRESETS_QUALIDADE[self.preset_qualidade_id]
+
+    def _extrair_pontos(self, landmarks) -> np.ndarray:
+        return np.array([(lm.x, lm.y) for lm in landmarks.landmark], dtype=np.float32)
+
+    def _suavizar_pontos(self, pontos: np.ndarray) -> np.ndarray:
+        alpha = self._preset_atual().suavizacao_pontos
+        if self.pontos_suavizados is None or self.pontos_suavizados.shape != pontos.shape:
+            self.pontos_suavizados = pontos.copy()
+        else:
+            self.pontos_suavizados = self.pontos_suavizados * alpha + pontos * (1.0 - alpha)
+        return self.pontos_suavizados
+
+    def _aplicar_melhoria_visual(self, quadro: np.ndarray) -> np.ndarray:
+        if not self.melhoria_visual:
+            return quadro
+
+        preset = self._preset_atual()
+        lab = cv2.cvtColor(quadro, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=preset.clahe_clip, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        melhorado = cv2.cvtColor(cv2.merge((l, a, b)), cv2.COLOR_LAB2BGR)
+        borrado = cv2.GaussianBlur(melhorado, (0, 0), 1.2)
+        return cv2.addWeighted(melhorado, 1.0 + preset.nitidez, borrado, -preset.nitidez, 0)
+
+    def _alternar_preset(self, preset_id: str) -> None:
+        if preset_id not in PRESETS_QUALIDADE:
+            return
+        self.preset_qualidade_id = preset_id
+
+    def _calcular_metricas_de_pontos(self, pontos_array: np.ndarray) -> MetricasGesto:
+        pontos = [tuple(map(float, ponto)) for ponto in pontos_array]
         wrist = pontos[0]
         index_mcp, index_pip, index_tip = pontos[5], pontos[6], pontos[8]
         middle_mcp, middle_pip, middle_tip = pontos[9], pontos[10], pontos[12]
@@ -411,25 +470,20 @@ class DetectorGojo:
         self.quadros_estaveis = 0
         self.efeito_inicio = agora
 
-    def _desenhar_overlay_mao(self, quadro: np.ndarray, landmarks, score: float) -> None:
+    def _desenhar_overlay_mao(self, quadro: np.ndarray, pontos_suaves: np.ndarray, score: float) -> None:
         gesture_strong = score > 0.72
-        self.mp_drawing.draw_landmarks(
-            quadro,
-            landmarks,
-            self.mp_hands.HAND_CONNECTIONS,
-            self.mp_drawing.DrawingSpec(
-                color=(128, 216, 255) if not gesture_strong else (128, 216, 255),
-                thickness=3,
-                circle_radius=2,
-            ),
-            self.mp_drawing.DrawingSpec(
-                color=(255, 250, 255),
-                thickness=2,
-                circle_radius=3,
-            ),
-        )
-
         altura, largura = quadro.shape[:2]
+        pontos_px = [(int(x * largura), int(y * altura)) for x, y in pontos_suaves]
+        cor_linhas = (255, 216, 128) if gesture_strong else (143, 239, 255)
+        cor_pontos = (255, 248, 240) if gesture_strong else (210, 248, 255)
+
+        for origem, destino in self.mp_hands.HAND_CONNECTIONS:
+            cv2.line(quadro, pontos_px[origem], pontos_px[destino], cor_linhas, 3, cv2.LINE_AA)
+
+        for indice, ponto in enumerate(pontos_px):
+            raio = 6 if indice in (8, 12) else 4
+            cv2.circle(quadro, ponto, raio, cor_pontos, -1, cv2.LINE_AA)
+
         centro = (
             int(self.ultimas_metricas.center_x * largura),
             int(self.ultimas_metricas.center_y * altura),
@@ -437,14 +491,8 @@ class DetectorGojo:
         cor = (120, 216, 255) if not gesture_strong else (128, 216, 255)
         cv2.circle(quadro, centro, 46, cor, 2, lineType=cv2.LINE_AA)
 
-        ponta_indicador = (
-            int(landmarks.landmark[8].x * largura),
-            int(landmarks.landmark[8].y * altura),
-        )
-        ponta_medio = (
-            int(landmarks.landmark[12].x * largura),
-            int(landmarks.landmark[12].y * altura),
-        )
+        ponta_indicador = pontos_px[8]
+        ponta_medio = pontos_px[12]
         cv2.line(quadro, ponta_indicador, ponta_medio, (255, 240, 190), 2, lineType=cv2.LINE_AA)
 
     def _desenhar_hud(
@@ -470,7 +518,12 @@ class DetectorGojo:
             (f"Status: {status}", 0.72, (230, 240, 246)),
             (f"Score bruto: {score * 100:05.1f}%   Score suave: {score_suave * 100:05.1f}%", 0.66, (196, 222, 236)),
             (f"Estabilidade: {estabilidade * 100:05.1f}%   FPS medio: {fps:05.1f}", 0.66, (196, 222, 236)),
-            (f"Resolucao camera: {largura}x{altura}", 0.66, (196, 222, 236)),
+            (
+                f"Resolucao camera: {largura}x{altura}   Preset: {self._preset_atual().nome}"
+                f"   Visual: {'ON' if self.melhoria_visual else 'OFF'}",
+                0.66,
+                (196, 222, 236),
+            ),
             (explicacao, 0.64, (255, 235, 188) if not pronto else (158, 255, 208)),
         ]
 
@@ -479,7 +532,7 @@ class DetectorGojo:
             cv2.putText(quadro, texto, (42, y), cv2.FONT_HERSHEY_SIMPLEX, escala, cor, 2, cv2.LINE_AA)
             y += 24
 
-        dicas = "C calibrar  R resetar  F fullscreen  H HUD  Q sair"
+        dicas = "1 detalhe  2 balanceado  3 fluido  V visual  C calibrar  R resetar  F fullscreen  H HUD  Q sair"
         cv2.putText(
             quadro,
             dicas,
@@ -574,12 +627,13 @@ class DetectorGojo:
                     continue
 
                 quadro = cv2.flip(quadro, 1)
-                quadro_saida = quadro.copy()
+                quadro_saida = self._aplicar_melhoria_visual(quadro.copy())
                 altura, largura = quadro.shape[:2]
                 escala = 1.0
                 quadro_processamento = quadro
-                if largura > LARGURA_PROCESSAMENTO:
-                    escala = LARGURA_PROCESSAMENTO / float(largura)
+                largura_processamento = self._preset_atual().largura_processamento
+                if largura > largura_processamento:
+                    escala = largura_processamento / float(largura)
                     novo_tamanho = (int(largura * escala), int(altura * escala))
                     quadro_processamento = cv2.resize(quadro, novo_tamanho, interpolation=cv2.INTER_AREA)
 
@@ -595,7 +649,9 @@ class DetectorGojo:
 
                 if resultado.multi_hand_landmarks:
                     landmarks = resultado.multi_hand_landmarks[0]
-                    metricas = self._calcular_metricas(landmarks)
+                    pontos = self._extrair_pontos(landmarks)
+                    pontos_suaves = self._suavizar_pontos(pontos)
+                    metricas = self._calcular_metricas_de_pontos(pontos_suaves)
                     pontuacao = self._pontuar_gesto(metricas)
                     score = float(pontuacao["overall"])
                     partes = pontuacao["parts"]
@@ -631,11 +687,12 @@ class DetectorGojo:
 
                     status = self._status_texto(score, score_suave, pronto)
                     explicacao = self._explicacao_gesto(partes, pronto)
-                    self._desenhar_overlay_mao(quadro_saida, landmarks, score)
+                    self._desenhar_overlay_mao(quadro_saida, pontos_suaves, score)
                 else:
                     self.ultimas_metricas = None
                     self.ultimas_landmarks = None
                     self.ultimo_resultado = None
+                    self.pontos_suavizados = None
                     self.historico_pontuacao.clear()
                     self.quadros_estaveis = max(0, self.quadros_estaveis - 2)
 
@@ -657,6 +714,10 @@ class DetectorGojo:
                         self.amostras_calibracao.clear()
                 if tecla in (ord("r"),):
                     self._limpar_perfil()
+                if tecla in (ord("1"), ord("2"), ord("3")):
+                    self._alternar_preset(chr(tecla))
+                if tecla in (ord("v"),):
+                    self.melhoria_visual = not self.melhoria_visual
 
         finally:
             self.hands.close()
